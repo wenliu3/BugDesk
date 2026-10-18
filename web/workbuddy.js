@@ -87,7 +87,7 @@ function workBuddyTimeLeft(){
 }
 
 function workBuddyTask(){
-  return '使用 bugdesk-workbuddy 技能。\n连接文件：'+String(workBuddyStatus.connection_file||'')+'\n\n读取当前 Bug 清单，根据我在下方粘贴的共享表格失败用例，整理每条 Bug 的前置条件、复现步骤、实际结果和预期结果，保留测试事实和单元格中的换行。\n用例 ID 完全一致时可关联附件文件夹；其他匹配只提供建议，说明理由，无法确认时留待我选择。实际结果请结合失败用例的操作上下文与明确记录的异常现象整理成自然语句，不要照抄备注或 Bug 标题；去掉版本、厂商归类、模块等管理标签，保留属于界面提示、错误码或原话的括号内容。不能从预期结果反推现象或补造动作、响应、原因。原始失败备注放 source_actual，歧义和待补充事项放 review_notes 数组，不要把【待确认】写入实际结果。没有实际现象则 actual 留空。新版字段需要配套技能 1.0.2。\n把整理建议发送到 BugDesk，让我核对后再导入，不提交到禅道。\n\n下面是复制的失败用例：\n';
+  return '使用 bugdesk-workbuddy 技能。\n连接文件：'+String(workBuddyStatus.connection_file||'')+'\n\n读取当前 Bug 清单，根据我在下方粘贴的共享表格失败用例，整理每条 Bug 的前置条件、复现步骤、实际结果和预期结果，保留测试事实和单元格中的换行。\n用例 ID 完全一致时可关联附件文件夹；其他匹配只提供建议，说明理由，无法确认时留待我选择。实际结果请结合失败用例的操作上下文与明确记录的异常现象整理成自然语句，不要照抄备注或 Bug 标题；去掉版本、厂商归类、模块等管理标签，保留属于界面提示、错误码或原话的括号内容。不能从预期结果反推现象或补造动作、响应、原因。原始失败备注放 source_actual，歧义和待补充事项放 review_notes 数组，不要把【待确认】写入实际结果。没有实际现象则 actual 留空。请使用配套的 bugdesk-workbuddy 1.0.0 技能。\n把整理建议发送到 BugDesk，让我核对后再导入，不提交到禅道。\n\n下面是复制的失败用例：\n';
 }
 
 function workBuddyRenderStatus(){

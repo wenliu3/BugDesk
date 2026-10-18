@@ -4,7 +4,7 @@ display_name: BugDesk用例整理
 description: 从共享表格或用户粘贴的测试用例整理失败事实，建议关联当前 BugDesk 草稿，并暂存供用户核对。适用于不同列顺序、无表头和多行单元格的用例，不执行禅道提交。
 description_zh: 从共享表格或粘贴内容整理失败用例，建议关联 BugDesk 草稿，保留原始步骤和预期结果，并暂存供用户核对。
 description_en: Understand copied test cases, suggest links to current BugDesk drafts, and stage their facts for human review without submitting bugs.
-version: 1.0.2
+version: 1.0.0
 author: BugDesk
 ---
 

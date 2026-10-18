@@ -69,17 +69,20 @@
   {
     "short": "WorkBuddy",
     "title": "在 WorkBuddy 中发送任务",
-    "taskExample": true,
+    "image": "/help/workbuddy-3-workbuddy.png",
+    "width": 1707,
+    "height": 1019,
+    "alt": "WorkBuddy 客户端实拍：已选择 bugdesk-workbuddy 技能，并填入尚未发送的合成示例任务。",
     "intro": "使用当次复制的任务，附上允许发送的失败用例。",
     "steps": [
       "按客户端提供的流程安装并启用 bugdesk-workbuddy 技能。",
-      "粘贴当次任务，并在末尾附上失败用例，保留表头和换行。",
+      "在新任务输入 /，选择 bugdesk-workbuddy 技能，再粘贴当次任务与失败用例。保留表头和换行。",
       "选择客户端中可用、适合处理多行表格的模型，然后发送。",
       "确认技能已执行，回到 BugDesk 看到整理建议后再核对。"
     ],
     "boxes": [],
     "flow": true,
-    "note": "示意内容不能直接建立连接，请使用当次复制的完整任务。",
+    "note": "截图使用合成用例，任务未发送。实际使用时请粘贴 BugDesk 当次复制的完整任务；只选择技能还没有执行整理。",
     "recovery": "请按 bugdesk-workbuddy 技能执行，并把整理建议回传 BugDesk。"
   },
   {

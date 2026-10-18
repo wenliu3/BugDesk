@@ -1,13 +1,13 @@
-BugDesk + WorkBuddy 接入说明
+BugDesk + WorkBuddy 1.0.0 接入说明
 ============================
 
 一、安装配套技能
-技能源码位于 integrations/bugdesk-workbuddy。将目录中的 SKILL.md、scripts 和 references 打包到 ZIP 根目录，按 WorkBuddy 客户端提供的技能导入流程安装。技能标识为 bugdesk-workbuddy，名称为「BugDesk用例整理」。程序和技能均可独立运行；不使用 WorkBuddy 时仍可手工整理 Bug。
+在 https://github.com/wenliu3/BugDesk/releases/latest 下载 BugDesk-WorkBuddy-Skill-1.0.0.zip，按 WorkBuddy 客户端提供的技能导入流程安装。技能标识为 bugdesk-workbuddy，名称为「BugDesk用例整理」。技能 ZIP 可直接导入；不使用 WorkBuddy 时仍可手工整理 Bug。技能源码位于仓库 integrations/bugdesk-workbuddy。
 
 二、每天使用
 1. 打开 BugDesk，选择自己的 Bug 日期目录并扫描。
 2. 点击「WorkBuddy 整理」→「开启本机连接（60 分钟）」。
-3. 点击「复制任务给 WorkBuddy」，把当次任务粘贴到 WorkBuddy，并附上允许发送的失败用例。保留用例 ID、表头和单元格中的换行。
+3. 点击「复制任务给 WorkBuddy」。在 WorkBuddy 新任务中输入 /，选择 bugdesk-workbuddy 技能，粘贴当次任务，并附上允许发送的失败用例。保留用例 ID、表头和单元格中的换行。
 4. 选择客户端中可用、适合理解多行表格的模型。确认已识别 bugdesk-workbuddy 技能，执行后回到 BugDesk，看到整理建议再继续。若只有文字回复，可补发：请按 bugdesk-workbuddy 技能执行，并把整理建议回传 BugDesk。
 5. 在 BugDesk 左侧逐条查看 Bug。中间选择来源用例，右侧核对前置条件、步骤、实际结果和预期结果。悬停或键盘聚焦仅预览，点击或 Enter / 空格才选用。
 6. 核对无误后勾选「本条已核对」，点击「导入已核对 Bug」。默认补空白，明确需要替换时再勾选「覆盖已有内容」。可以分批导入，同一来源用例可以用于多个 Bug。

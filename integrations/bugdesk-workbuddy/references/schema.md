@@ -23,7 +23,7 @@ powershell.exe -NoProfile -File '<技能目录>\scripts\bugdesk.ps1' -Action sta
 
 ## 暂存输入
 
-`POST /api/workbuddy/stage` 接收以下 UTF-8 JSON。文字字段均为字符串，可以留空；换行使用 JSON 转义或 JSON 序列化保留。`candidate_bug_ids`、`source_actual`、`review_notes` 可省略；后两项需 BugDesk 1.0.13 或更新版本。
+`POST /api/workbuddy/stage` 接收以下 UTF-8 JSON。文字字段均为字符串，可以留空；换行使用 JSON 转义或 JSON 序列化保留。`candidate_bug_ids`、`source_actual`、`review_notes` 可省略；BugDesk 与配套技能的首个正式版本 1.0.0 均支持这些字段。
 
 ```json
 {

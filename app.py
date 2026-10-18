@@ -23,7 +23,7 @@ from case_clipboard import parse_cases
 from workbuddy import WorkBuddyBridge
 from zentao import ZenTaoClient, ConnectorError
 
-VERSION = "1.0.19"
+VERSION = "1.0.0"
 ASSET_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "web"
 
 
@@ -431,6 +431,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("导出链接已失效，请重新导出。")
                 return self._file(Path(export_path), download=True)
             assets = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/app.js": "app.js", "/case_import.js": "case_import.js", "/workbuddy.js": "workbuddy.js", "/workbuddy_help.js": "workbuddy_help.js", "/workbuddy_help.css": "workbuddy_help.css"}
+            assets['/help/workbuddy-3-workbuddy.png'] = 'help/workbuddy-3-workbuddy.png'
             for step in range(1, 5):
                 name = f'help/workbuddy-{step}-' + ('scan', 'send', 'preview', 'import')[step - 1] + '.jpg'
                 assets['/' + name] = name

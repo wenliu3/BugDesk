@@ -112,9 +112,9 @@ class WorkBuddyHTTPTests(unittest.TestCase):
             with self.request(f'/help/workbuddy-{step}-{name}.jpg') as response:
                 self.assertEqual(response.headers['Content-Type'], 'image/jpeg')
                 self.assertTrue(response.read().startswith(b'\xff\xd8'))
-        with self.assertRaises(HTTPError) as removed:
-            self.request('/help/workbuddy-3-workbuddy.png')
-        self.assertEqual(removed.exception.code, 404)
+        with self.request('/help/workbuddy-3-workbuddy.png') as response:
+            self.assertEqual(response.headers['Content-Type'], 'image/png')
+            self.assertTrue(response.read().startswith(b'\x89PNG\r\n\x1a\n'))
         with self.assertRaises(HTTPError) as missing:
             self.request('/help/unknown.jpg')
         self.assertEqual(missing.exception.code, 404)

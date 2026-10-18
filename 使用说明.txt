@@ -1,4 +1,4 @@
-BugDesk · Bug 提交助手
+BugDesk · Bug 提交助手 1.0.0
 ======================
 
 源码版需要 Windows 和 Python 3.11+。在项目目录运行 python app.py，或双击「启动开发版.cmd」。自行打包的便携版双击 BugDesk.exe，不需要另装 Python。
@@ -15,7 +15,7 @@ BugDesk · Bug 提交助手
 4. 粘贴用例与 WorkBuddy
 「更多」中的「粘贴用例」支持 HTML 表格、TSV 和多行单元格，先识别字段，再核对每条用例对应的 Bug。默认仅补空白；覆盖已有内容需要明确勾选。
 
-可选 WorkBuddy 整理：安装 integrations/bugdesk-workbuddy 配套技能，开启 60 分钟本机连接，复制当次任务并附上允许发送的失败用例。等建议回传后，逐条选择来源用例并核对四项事实，再点击「导入已核对 Bug」。悬停只预览，点击才选用；来源用例可供多个 Bug 使用。不自动审核或提交。
+可选 WorkBuddy 整理：从 https://github.com/wenliu3/BugDesk/releases/latest 下载并安装 BugDesk-WorkBuddy-Skill-1.0.0.zip 配套技能，开启 60 分钟本机连接，复制当次任务并附上允许发送的失败用例。等建议回传后，逐条选择来源用例并核对四项事实，再点击「导入已核对 Bug」。悬停只预览，点击才选用；来源用例可供多个 Bug 使用。不自动审核或提交。
 
 完整图解位于主界面「更多」→「WorkBuddy 使用说明」。连接过期、切换批次或关闭工具后，需要重新开启并复制任务。
 

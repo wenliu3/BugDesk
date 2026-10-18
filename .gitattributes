@@ -4,6 +4,7 @@
 *.css text eol=lf
 *.html text eol=lf
 *.md text eol=lf
+*.txt text eol=lf
 *.tsv text eol=lf
 # Empty trailing cells are intentional parser fixtures.
 tests/fixtures/*.tsv whitespace=-blank-at-eol

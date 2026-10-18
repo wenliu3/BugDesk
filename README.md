@@ -6,9 +6,22 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 
 **Python 3.11+ · 标准库运行 · 无前端构建 · 浅色 / 深色模式 · MIT**
 
+## 下载 1.0.0
+
+软件与 WorkBuddy 技能从 **1.0.0** 开始作为首个正式版本发布。
+
+前往 [GitHub Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载：
+
+| 文件 | 用途 |
+| --- | --- |
+| `BugDesk-Windows-1.0.0.zip` | 推荐。解压后双击 `BugDesk.exe`，草稿保存在旁边的 `BugDesk-data`。无需安装 Python。 |
+| `BugDesk-1.0.0-Windows-x64.exe` | 单独的 Windows 64 位程序，双击运行；默认在 Windows 本地应用数据目录保存草稿。 |
+| `BugDesk-WorkBuddy-Skill-1.0.0.zip` | 可选，导入 WorkBuddy 的配套技能包；不需要解压后再压缩。 |
+| `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
+
 ## 界面预览
 
-以下截图全部使用程序自带的合成示例，不包含真实项目、人员、账号或内网地址。
+以下截图全部使用合成示例，不包含真实项目、人员、账号或内网地址。WorkBuddy 画面展示技能选择和任务输入，不代表任务已发送或执行完成。
 
 ### 整理 Bug：清单与编辑区分别滚动
 
@@ -21,6 +34,10 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 ### WorkBuddy：核对用例，再导入草稿
 
 ![WorkBuddy 用例核对](docs/screenshots/workbuddy-review.png)
+
+### 在 WorkBuddy 中选择技能并输入任务
+
+![WorkBuddy 调用 BugDesk 技能](web/help/workbuddy-3-workbuddy.png)
 
 ### 提交预览：检查公共信息与完整描述
 
@@ -81,7 +98,7 @@ Bug 附件/
 
 ## 可选：接入 WorkBuddy
 
-技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)。将该目录内的 `SKILL.md`、`scripts` 和 `references` 放在 ZIP 根目录，按 WorkBuddy 客户端的技能导入流程安装。
+从 [Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载 `BugDesk-WorkBuddy-Skill-1.0.0.zip`，按 WorkBuddy 客户端的技能导入流程安装。技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)，`SKILL.md`、`scripts` 和 `references` 位于技能 ZIP 根目录。
 
 在 BugDesk 扫描 Bug 后，开启「WorkBuddy 整理」中的本机连接，复制当次任务并附上失败用例。等建议回传后，逐条核对来源用例和四项事实，再导入草稿。
 
@@ -119,10 +136,10 @@ Python 测试使用本地文件和模拟服务，不连接真实公司系统。�
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python build_windows.py
+python build_windows.py --release 1.0.0
 ```
 
-产物生成在 `release` 目录。仓库提供源码和打包脚本，生成的 EXE、用户数据和发布压缩包不纳入源码提交。
+产物生成在 `release` 目录，包含便携版 ZIP、单独的 EXE、配套技能 ZIP 和校验值。脚本会核对软件与技能版本，并只收集明确列出的交付文件。生成的 EXE、用户数据和发布压缩包不纳入源码提交。
 
 ## 许可证
 
