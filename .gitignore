@@ -1,0 +1,47 @@
+.build-env/
+__pycache__/
+*.pyc
+.qa-data/
+.qa-ready.json
+build/
+dist/
+release/
+*.spec
+.local/
+.dev-check/
+.idea/
+.pytest_cache/
+.qa-*/
+.qa-*
+.smoke-*/
+.workbuddy*-before/
+*.stdout
+*.stderr
+
+# Local workspace instructions and user-specific configuration
+/AGENTS.md
+.vscode/
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+node_modules/
+
+# Runtime drafts, exported reports and temporary connection capabilities
+BugDesk-data/
+server-instance.json
+workbuddy-session.json
+connection-verification.json
+state.json
+state.backup.json
+exports/
+*.log
+
+# Private keys and credentials must never be included in source delivery
+*.pem
+*.key
+*.pfx
+*.p12
+.DS_Store
+Thumbs.db

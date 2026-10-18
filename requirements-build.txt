@@ -1,0 +1,2 @@
+# Optional: needed only when generating the Windows executable.
+PyInstaller==6.22.3

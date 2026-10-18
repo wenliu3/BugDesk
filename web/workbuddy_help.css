@@ -1,0 +1,88 @@
+.workbuddy-guide-modal{width:min(1500px,calc(100vw - 32px));height:min(900px,calc(100vh - 32px));height:min(900px,calc(100dvh - 32px));max-width:none;max-height:calc(100dvh - 32px);padding:0;border:1px solid #dce6df;border-radius:14px;margin:auto;background:#fff;color:#33493d;box-shadow:0 25px 90px #122e3540;overflow:hidden;font-family:inherit}
+.workbuddy-guide-modal[open]{display:flex;flex-direction:column}
+.workbuddy-guide-modal::backdrop{background:rgba(22,42,34,.42);backdrop-filter:blur(2px)}
+.workbuddy-guide-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:13px 20px 11px;border-bottom:1px solid #e6ece8;flex-shrink:0}
+.workbuddy-guide-eyebrow{font-size:10px;letter-spacing:1.3px;color:#7a9684}
+.workbuddy-guide-header h2{font-size:17px;line-height:1.5;font-weight:600;margin:3px 0 0;color:#2c4939}
+.workbuddy-guide-close{display:flex;align-items:center;justify-content:center;width:32px;height:32px;flex-shrink:0;padding:5px;border:0;border-radius:6px;background:none;color:#7c9184}
+.workbuddy-guide-close:hover{background:#edf4ef;color:#327756}
+.workbuddy-guide-close svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.workbuddy-guide-task-slot{flex-shrink:0;max-height:190px;overflow:auto}
+.workbuddy-guide-task-slot>.workbuddy-task,.workbuddy-guide-task-slot>.field{display:flex;flex-direction:column;gap:7px;margin:12px 22px;padding:12px 14px;background:#f2f7f3;border:1px solid #dbe8df;border-radius:7px;font-size:12px;color:#5c7866}
+.workbuddy-guide-task-slot textarea{width:100%;height:95px;min-height:70px;max-height:120px;padding:10px 12px;resize:vertical;border:1px solid #cedfd2;border-radius:5px;background:white;font:inherit;font-size:12px;line-height:1.65;color:#3f5b48}
+.workbuddy-guide-pages{display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 20px;border-bottom:1px solid #e7eee9;background:#f9fcfa;flex-shrink:0}
+.workbuddy-guide-page{display:flex;align-items:center;justify-content:center;gap:8px;min-width:110px;border:0;border-radius:6px;padding:6px 12px;font:inherit;font-size:12px;color:#819387;background:transparent}
+.workbuddy-guide-page:hover{background:#edf5ef;color:#52765e}
+.workbuddy-guide-page.active{background:#e6f2eb;color:#28734d;font-weight:600}
+.workbuddy-guide-page-number{display:flex;align-items:center;justify-content:center;width:21px;height:21px;border:1px solid #d8e4db;border-radius:50%;font-size:11px;background:#fff}
+.workbuddy-guide-page.active .workbuddy-guide-page-number{background:#33885e;border-color:#33885e;color:#fff}
+.workbuddy-guide-body{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden;padding:14px 20px}
+.workbuddy-guide-workspace{display:grid;grid-template-columns:minmax(0,1fr) clamp(250px,25%,310px);grid-template-rows:minmax(0,1fr);gap:18px;flex:1;min-height:0;min-width:0}
+.workbuddy-guide-sidebar{min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:14px;background:#f8fbf9;border:1px solid #e0eae3;border-radius:8px}
+.workbuddy-guide-page-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:12px;flex-shrink:0;min-width:0}
+.workbuddy-guide-page-header>div{min-width:0}
+.workbuddy-guide-page-header h3{font-size:17px;line-height:1.5;margin:0 0 4px;font-weight:600;color:#365641}
+.workbuddy-guide-page-header p{font-size:12px;line-height:1.7;margin:0;color:#7b8d80}
+.workbuddy-guide-example-note{font-size:11px;line-height:1.65;color:#9b865e;padding:8px 9px;background:#fbf7ed;border-radius:5px;margin:0 0 12px}
+.workbuddy-guide-zoom{flex-shrink:0;border:1px solid #dce7df;border-radius:5px;padding:6px 9px;background:#fff;color:#6a8974;font:inherit;font-size:11px}
+.workbuddy-guide-zoom:hover{background:#f0f7f2;border-color:#b5d0bf}
+.workbuddy-guide-image-viewport{container-type:size;display:grid;place-items:center;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;overscroll-behavior:contain;scrollbar-width:thin;border:1px solid #dce5df;border-radius:8px;background:#edf3ef;outline-offset:3px}
+.workbuddy-guide-figure{position:relative;width:min(100cqw,calc(100cqh * var(--workbuddy-guide-ratio,1.9)));min-height:0;margin:0;background:#f6f8f6;isolation:isolate}
+.workbuddy-guide-image{display:block;width:100%;height:auto;object-fit:contain;user-select:none}
+.workbuddy-guide-image-viewport.is-zoomed .workbuddy-guide-figure{width:var(--workbuddy-guide-natural-width,1707px);max-width:none}
+.workbuddy-guide-image-viewport.is-zoomed{display:block;overflow:auto}
+.workbuddy-guide-annotations{position:absolute;inset:0;pointer-events:none;z-index:1}
+.workbuddy-guide-box{position:absolute;border:2px solid #ce8d46;border-radius:5px;background:#f5c7850a;box-shadow:0 0 0 1px #fff9,0 2px 6px #a9692326}
+.workbuddy-guide-pin{position:absolute;left:0;top:0;transform:translate(-40%,-45%);display:flex;align-items:center;justify-content:center;width:25px;height:25px;border:2px solid #fff;border-radius:50%;font-size:12px;font-weight:700;line-height:1;color:#fff;background:#c58a45;box-shadow:0 2px 5px #89551933}
+.workbuddy-guide-box.pin-below .workbuddy-guide-pin{top:100%;transform:translate(-40%,20%)}
+.workbuddy-guide-pin.custom-position{transform:translate(-50%,-50%)}
+.workbuddy-guide-box.pin-only{border-color:transparent;background:none;box-shadow:none}
+.workbuddy-guide-arrows{display:block;width:100%;height:100%;overflow:visible;color:#be843f;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;filter:drop-shadow(0 1px 1px #fff)}
+.workbuddy-guide-image-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;padding:25px;background:#f0f5f1;color:#75877b;font-size:13px;line-height:1.8;text-align:center;z-index:2}
+.workbuddy-guide-figure.image-missing .workbuddy-guide-annotations{display:none}
+.workbuddy-guide-steps{display:flex;flex-direction:column;gap:14px;list-style:none;padding:0;margin:0}
+.workbuddy-guide-steps li{display:flex;align-items:flex-start;gap:8px;min-width:0;color:#5b7463;font-size:12px;line-height:1.65}
+.workbuddy-guide-steps li>span:last-child{min-width:0;overflow-wrap:anywhere}
+.workbuddy-guide-step-number{display:flex;align-items:center;justify-content:center;width:19px;height:19px;flex-shrink:0;margin-top:1px;border-radius:50%;background:#f6eee3;color:#ac7b3f;font-size:10px;font-weight:600}
+.workbuddy-guide-extra:empty{display:none}
+.workbuddy-guide-extra{margin-top:14px}
+.workbuddy-guide-flow,.workbuddy-guide-legend{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;padding-top:11px;font-size:12px;line-height:1.7;color:#7d9284}
+.workbuddy-guide-flow span{background:#f1f6f2;border:1px solid #e0ebe3;border-radius:5px;padding:3px 10px;color:#55785f}
+.workbuddy-guide-flow b{font-size:14px;font-weight:400;color:#a0b0a5}
+.workbuddy-guide-flow strong{font-weight:500;color:#4f7e5d}
+.workbuddy-guide-legend{gap:12px 24px}
+.workbuddy-guide-legend>span{display:flex;align-items:center;gap:7px}
+.workbuddy-guide-radio{display:inline-block;position:relative;width:15px;height:15px;border:1.5px solid #4b9d71;border-radius:50%;background:#fff}
+.workbuddy-guide-radio:after{position:absolute;content:'';inset:3px;border-radius:50%;background:#4b9d71}
+.workbuddy-guide-highlight{display:inline-block;width:23px;height:15px;border:1.5px solid #83a9c0;border-left-width:4px;border-radius:3px;background:#f0f6fa}
+.workbuddy-guide-note{font-size:11px;color:#89998d;line-height:1.8;margin:9px 0 0}
+.workbuddy-guide-model-advice{font-size:12px;line-height:1.8;color:#6f8777;margin:10px 0 0;padding:9px 12px;border-radius:6px;background:#f1f6f2}
+.workbuddy-guide-recovery{font-size:12px;line-height:1.8;color:#748b7b;margin-top:10px}
+.workbuddy-guide-recovery>summary{cursor:pointer;width:fit-content;color:#6e8b78}
+.workbuddy-guide-recovery p{margin:6px 0 0}
+.workbuddy-guide-recovery blockquote{margin:6px 0 0;padding:8px 12px;border-left:2px solid #b7d3c1;background:#f5f9f6;border-radius:0 5px 5px 0;color:#527360;user-select:text}
+.workbuddy-guide-sources{font-size:11px;color:#8a9b8f;margin-top:10px;line-height:1.8}
+.workbuddy-guide-sources>summary{cursor:pointer;width:fit-content;color:#809688}
+.workbuddy-guide-sources p{margin:6px 0}
+.workbuddy-guide-source-links{display:flex;align-items:center;flex-wrap:wrap;gap:4px 18px}
+.workbuddy-guide-source-links a{color:#658b75;text-decoration:underline;text-underline-offset:3px}
+.workbuddy-guide-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0;padding:10px 20px;border-top:1px solid #e6ece8;background:#fbfdfb}
+.workbuddy-guide-nav-button{min-width:94px;min-height:35px;padding:7px 15px;border:1px solid #d7e3db;border-radius:6px;background:#fff;color:#64806c;font:inherit;font-size:12px}
+.workbuddy-guide-nav-button:hover:not(:disabled){border-color:#9fc4ad;background:#f1f8f3}
+.workbuddy-guide-nav-button.primary{background:#33865d;border-color:#33865d;color:#fff}
+.workbuddy-guide-nav-button.primary:hover:not(:disabled){background:#27754e;border-color:#27754e}
+.workbuddy-guide-counter{font-size:11px;color:#93a296;font-variant-numeric:tabular-nums}
+.workbuddy-guide-modal button:focus-visible,.workbuddy-guide-image-viewport:focus-visible{outline:2px solid #75ad8e;outline-offset:3px}
+.workbuddy-guide-task-example{width:min(760px,92%);max-height:94%;overflow:auto;padding:24px;background:#fff;border:1px solid #dce6df;border-radius:12px;color:#486354}
+.workbuddy-guide-task-badge{font-size:11px;color:#7d9385}
+.workbuddy-guide-task-example h3{font-size:20px;margin:12px 0 16px}
+.workbuddy-guide-task-example pre{font:inherit;font-size:13px;line-height:1.9;white-space:pre-wrap;padding:18px;background:#f1f7f3;border:1px solid #e0ebe3;border-radius:8px}
+.workbuddy-guide-task-example p{font-size:12px;line-height:1.8;margin-bottom:0}
+:root[data-theme=dark] .workbuddy-guide-task-example{background:var(--night-panel);border-color:var(--night-line);color:var(--night-text)}
+:root[data-theme=dark] .workbuddy-guide-task-example pre{background:var(--night-input);border-color:var(--night-line)}
+:root[data-theme=dark] .workbuddy-guide-task-badge{color:var(--night-muted)}
+@media(max-width:1000px){.workbuddy-guide-workspace{grid-template-columns:minmax(0,1fr) 240px;gap:12px}.workbuddy-guide-sidebar{padding:11px}.workbuddy-guide-steps{gap:11px}.workbuddy-guide-steps li{font-size:11px}.workbuddy-guide-page-header h3{font-size:16px}}
+@media(max-height:720px){.workbuddy-guide-header{padding-top:9px;padding-bottom:8px}.workbuddy-guide-header h2{font-size:16px}.workbuddy-guide-pages{padding-top:5px;padding-bottom:5px}.workbuddy-guide-page{padding-top:4px;padding-bottom:4px}.workbuddy-guide-body{padding:10px 14px}.workbuddy-guide-page-header{margin-bottom:9px}.workbuddy-guide-page-header h3{font-size:15px;margin-bottom:2px}.workbuddy-guide-page-header p{font-size:11px;line-height:1.55}.workbuddy-guide-sidebar{padding:10px}.workbuddy-guide-steps{gap:9px}.workbuddy-guide-steps li{font-size:11px;line-height:1.55}.workbuddy-guide-example-note{font-size:10px;line-height:1.5;padding:6px 7px;margin-bottom:9px}.workbuddy-guide-extra{margin-top:10px}.workbuddy-guide-recovery,.workbuddy-guide-sources{font-size:10px;margin-top:8px}.workbuddy-guide-footer{padding-top:7px;padding-bottom:7px}.workbuddy-guide-nav-button{min-height:32px;padding-top:5px;padding-bottom:5px}}
+@media(max-width:700px){.workbuddy-guide-modal{width:calc(100vw - 20px);height:calc(100dvh - 20px);max-height:calc(100dvh - 20px);border-radius:10px}.workbuddy-guide-header{padding-left:12px;padding-right:12px}.workbuddy-guide-header h2{font-size:16px}.workbuddy-guide-pages{gap:4px;padding-left:8px;padding-right:8px}.workbuddy-guide-page{min-width:0;flex:1;gap:5px;padding-left:4px;padding-right:4px;font-size:11px}.workbuddy-guide-body{padding:10px 12px}.workbuddy-guide-page-header{gap:9px;align-items:flex-start}.workbuddy-guide-page-header h3{font-size:14px}.workbuddy-guide-page-header p{font-size:10px;line-height:1.5}.workbuddy-guide-zoom{font-size:10px;padding:5px 7px}.workbuddy-guide-workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(60px,1fr) minmax(0,auto);gap:10px}.workbuddy-guide-sidebar{padding:0;border:0;border-radius:0;background:none;max-height:100%;overflow:auto}.workbuddy-guide-example-note{padding:5px 7px;margin-bottom:8px}.workbuddy-guide-image-viewport{border-radius:5px}.workbuddy-guide-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px}.workbuddy-guide-steps li{font-size:11px;line-height:1.55;gap:6px}.workbuddy-guide-step-number{width:17px;height:17px;font-size:9px}.workbuddy-guide-extra{display:flex;flex-wrap:wrap;align-items:flex-start;gap:5px 14px;margin-top:8px}.workbuddy-guide-extra>.workbuddy-guide-note,.workbuddy-guide-extra>.workbuddy-guide-legend,.workbuddy-guide-extra>details[open]{flex-basis:100%}.workbuddy-guide-recovery,.workbuddy-guide-sources,.workbuddy-guide-note{font-size:10px;margin-top:0}.workbuddy-guide-legend{padding-top:0;gap:7px 18px;font-size:10px}.workbuddy-guide-pin{width:21px;height:21px;font-size:10px;border-width:1.5px}.workbuddy-guide-box{border-width:1.5px;border-radius:3px}.workbuddy-guide-footer{padding-left:12px;padding-right:12px}.workbuddy-guide-task-slot>.workbuddy-task,.workbuddy-guide-task-slot>.field{margin-left:12px;margin-right:12px}}
+@media(max-width:520px){.workbuddy-guide-page{flex-direction:column;gap:3px;padding:4px 2px;font-size:10px;line-height:1.4}.workbuddy-guide-page-number{width:18px;height:18px}.workbuddy-guide-model-advice{font-size:11px}}
+@media(max-height:560px){.workbuddy-guide-eyebrow{display:none}.workbuddy-guide-header{padding-top:7px;padding-bottom:7px}.workbuddy-guide-header h2{font-size:15px;margin:0}.workbuddy-guide-close{width:27px;height:27px}.workbuddy-guide-body{padding-top:8px;padding-bottom:8px}.workbuddy-guide-page-header{margin-bottom:7px}.workbuddy-guide-page-header h3{font-size:14px}.workbuddy-guide-page-header p{font-size:10px}.workbuddy-guide-sidebar{padding-top:7px;padding-bottom:7px}.workbuddy-guide-steps{gap:7px}.workbuddy-guide-steps li{font-size:10px;line-height:1.5}.workbuddy-guide-footer{padding-top:5px;padding-bottom:5px}.workbuddy-guide-nav-button{min-height:29px;font-size:11px}.workbuddy-guide-task-slot{max-height:120px}}
