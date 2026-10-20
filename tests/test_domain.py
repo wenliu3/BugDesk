@@ -76,6 +76,79 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(restored["bugs"][0]["steps"], "播放视频后点击暂停。")
         self.assertTrue(restored["bugs"][0]["reviewed"])
 
+    def test_submitted_title_preserves_actual_prefix_and_edited_title_without_renaming_evidence(self):
+        folder = self.bug_folder()
+        before = {p.name: p.read_bytes() for p in folder.iterdir()}
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        self.workbench.save({"settings": {"title_prefix": "【测试版本】"},
+                             "bugs": [{"id": bug_id, "title": "【投屏】关闭后未退出"}]})
+        self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True}]})
+        self.workbench.set_submission(bug_id, status="submitting")
+        self.workbench.set_submission(bug_id, status="submitted", remote_id=123)
+        expected = "【测试版本】【投屏】关闭后未退出"
+        self.workbench.save({"settings": {"title_prefix": "【后续版本】"}})
+        restarted = Workbench(self.data)
+        self.assertEqual(restarted.get_bug(bug_id)["submitted_title"], expected)
+        self.assertEqual(restarted.scan(str(self.evidence))["bugs"][0]["submitted_title"], expected)
+        backup = json.loads(Path(restarted.export("json")).read_text(encoding="utf-8"))
+        restored = Workbench(self.root / "迁移工作区").import_backup(backup)
+        self.assertEqual(restored["bugs"][0]["submitted_title"], expected)
+        self.assertTrue(folder.is_dir())
+        self.assertEqual(before, {p.name: p.read_bytes() for p in folder.iterdir()})
+        self.assertFalse((self.evidence / "【投屏】关闭后未退出").exists())
+
+    def test_old_backup_cannot_replace_known_submission_title(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        old = json.loads(Path(self.workbench.export("json")).read_text(encoding="utf-8"))
+        self.workbench.set_submission(bug_id, status="submitting")
+        expected = self.workbench.get_bug(bug_id)["submitted_title"]
+        self.workbench.set_submission(bug_id, status="submitted", remote_id=456)
+        old["state"]["bugs"][0]["submitted_title"] = "旧备份中的不同标题"
+        imported = self.workbench.import_backup(old)
+        self.assertEqual(imported["bugs"][0]["submitted_title"], expected)
+        self.assertEqual(imported["bugs"][0]["remote_id"], 456)
+
+    def test_title_snapshot_survives_ambiguous_submission_and_manual_confirmation(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        self.workbench.save({"settings": {"title_prefix": "【原版本】"}})
+        self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True}]})
+        self.workbench.set_submission(bug_id, status="submitting")
+        expected = self.workbench.get_bug(bug_id)["submitted_title"]
+        self.workbench.set_submission(bug_id, status="uncertain")
+        self.workbench.save({"settings": {"title_prefix": "【新版本】"}})
+        confirmed = self.workbench.reconcile_submission(bug_id, "created", remote_id=789)
+        self.assertEqual(confirmed["bugs"][0]["submitted_title"], expected)
+
+    def test_import_rejects_invalid_submission_title_without_partial_changes(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        self.ready()
+        backup = json.loads(Path(self.workbench.export("json")).read_text(encoding="utf-8"))
+        before = self.workbench.state()
+        for value in (None, [], "x" * 120001, "bad\x00title"):
+            with self.subTest(value_type=type(value).__name__):
+                backup["state"]["bugs"][0]["submitted_title"] = value
+                with self.assertRaisesRegex(ValueError, "提交标题"):
+                    self.workbench.import_backup(backup)
+                self.assertEqual(self.workbench.state(), before)
+
+    def test_invalid_title_cannot_persist_a_broken_submission_snapshot(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        self.workbench.save({"bugs": [{"id": bug_id, "title": "无效\x00标题"}]})
+        self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True}]})
+        before = self.workbench.state()
+        with self.assertRaisesRegex(ValueError, "空字符"):
+            self.workbench.set_submission(bug_id, status="submitting")
+        self.assertEqual(self.workbench.state(), before)
+        self.assertEqual(Workbench(self.data).state(), before)
+
     def test_rescan_preserves_edits_submission_and_restores_temporarily_missing_folder(self):
         folder = self.bug_folder()
         self.workbench.scan(str(self.evidence))

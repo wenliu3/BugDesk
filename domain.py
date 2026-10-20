@@ -258,6 +258,9 @@ class Workbench:
                 identifiers.add(bug["id"])
                 if any(not isinstance(bug.get(field), str) for field in TEXT_FIELDS):
                     raise ValueError("Bug 描述损坏")
+                submitted_title = bug.get("submitted_title", "")
+                if not isinstance(submitted_title, str) or len(submitted_title) > 120000 or "\x00" in submitted_title:
+                    raise ValueError("Bug 提交标题损坏")
                 if not isinstance(bug.get("attachments"), list) or not isinstance(bug.get("excluded_attachments"), list):
                     raise ValueError("Bug 附件列表损坏")
                 if not isinstance(bug.get("selected"), bool) or not isinstance(bug.get("reviewed"), bool):
@@ -1041,6 +1044,7 @@ class Workbench:
     def _history(self, batch, bug):
         self._store["history"].append({"time": _now(), "batch_key": batch["batch_key"], "root_dir": batch["root_dir"],
                                        "bug_id": bug["id"], "title": bug["title"], "status": bug["status"],
+                                       "submitted_title": bug.get("submitted_title", ""),
                                        "remote_id": bug.get("remote_id"), "remote_url": bug.get("remote_url", ""),
                                        "error": bug.get("error", ""), "upload_status": copy.deepcopy(bug.get("upload_status", {}))})
         self._store["history"] = self._store["history"][-2000:]
@@ -1071,6 +1075,13 @@ class Workbench:
                 raise ValueError("提交信息格式不正确。")
             if "upload_status" in fields and not isinstance(fields["upload_status"], dict):
                 raise ValueError("附件上传状态格式不正确。")
+            if status == "submitting":
+                # Freeze the exact title sent by the connector, including the
+                # current prefix. Later shared settings must not rewrite it.
+                submitted_title = self._effective(snapshot, batch["settings"])[0]["title"].strip()
+                if "\x00" in submitted_title:
+                    raise ValueError("Bug 标题包含不可用的空字符，请修改后重新审核。")
+                bug["submitted_title"] = submitted_title
             bug.update(copy.deepcopy(fields))
             bug["status"] = status
             bug["updated_at"] = _now()
@@ -1285,6 +1296,10 @@ class Workbench:
                     if not isinstance(text, str) or len(text) > 100000:
                         raise ValueError("备份中的 Bug 描述格式不正确。")
                     bug[field] = text
+                submitted_title = item.get("submitted_title", "")
+                if not isinstance(submitted_title, str) or len(submitted_title) > 120000 or "\x00" in submitted_title:
+                    raise ValueError("备份中的提交标题格式不正确。")
+                bug["submitted_title"] = submitted_title
                 bug["overrides"] = _settings(item.get("overrides", {}), partial=True)
                 bug["case_source"] = _case_source(item.get("case_source", {}))
                 if "case_sources" in item:
@@ -1314,6 +1329,7 @@ class Workbench:
                 if known and (known.get("remote_id") or known.get("status") in TERMINAL_STATUSES):
                     for field in ("status", "remote_id", "remote_url", "error", "upload_status", "case_source", "case_sources", "excluded_attachments"):
                         bug[field] = copy.deepcopy(known.get(field))
+                    bug["submitted_title"] = known.get("submitted_title", "")
                 self._use_all_attachments(bug)
                 existing[identity] = bug
                 active.append(bug["id"])

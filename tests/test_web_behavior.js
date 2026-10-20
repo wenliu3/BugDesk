@@ -106,6 +106,54 @@ test('theme switching updates its accessible button without saving, changing rev
 });
 function savedState(steps){return {settings:{},bugs:[{id:'a',title:'A',steps,actual:'',expected:''},{id:'b',title:'B',steps:'',actual:'',expected:''}]};}
 
+test('copy submitted titles uses the current batch and frozen titles regardless of search selection and filter',async()=>{
+  const h=harness('app.js'),written=[];
+  h.context.navigator={clipboard:{writeText:async text=>written.push(text)}};
+  h.run('state={batch_key:"current",demo:false,settings:{title_prefix:"【新前缀】"},bugs:[{id:"a",title:"被修改的本地标题",submitted_title:"【旧前缀】【投屏】显示异常",status:"submitted",remote_id:11,selected:false},{id:"b",title:"B",submitted_title:"【投屏】第二条\\n同一标题",status:"submitted",remote_id:12,selected:false},{id:"c",title:"C",submitted_title:"【旧前缀】【投屏】显示异常",status:"submitted",remote_id:13},{id:"d",title:"待核对",status:"uncertain",remote_id:14},{id:"e",title:"附件未确认",status:"partial",remote_id:15},{id:"f",title:"失败",status:"failed"},{id:"g",title:"缺编号",status:"submitted"}],history:[{batch_key:"other",title:"其他任务",status:"submitted",remote_id:90}]};search="没有匹配";filter="ready";');
+  const before=plain(h.run('state'));
+  await h.run('copySubmittedTitles()');
+  assert.deepEqual(written,['【旧前缀】【投屏】显示异常\n【投屏】第二条 同一标题\n【旧前缀】【投屏】显示异常']);
+  assert.deepEqual(plain(h.run('state')),before);
+  assert.equal(h.calls.length,0);
+  assert.equal(h.get('submittedTitlesDialog').open,undefined);
+});
+
+test('copy submitted titles leaves the clipboard untouched for empty demo and busy batches',async()=>{
+  const h=harness('app.js'),written=[];
+  h.context.navigator={clipboard:{writeText:async text=>written.push(text)}};
+  h.run('state={settings:{},bugs:[]};');await h.run('copySubmittedTitles()');
+  h.run('state={demo:true,settings:{},bugs:[{id:"a",title:"演示",status:"submitted",remote_id:1}]};');await h.run('copySubmittedTitles()');
+  h.run('state.demo=false;batchBusy=true;');await h.run('copySubmittedTitles()');
+  h.run('batchBusy=false;state.job={running:true};');await h.run('copySubmittedTitles()');
+  assert.equal(written.length,0);assert.equal(h.calls.length,0);
+});
+
+test('clipboard refusal opens a selected plain text list and retry uses the displayed list',async()=>{
+  const h=harness('app.js');h.context.navigator={clipboard:{writeText:async()=>{throw new Error('denied');}}};
+  h.run('state={settings:{},bugs:[{id:"a",title:"A",submitted_title:"【投屏】<script>literal</script>",status:"submitted",remote_id:1}]};');
+  await h.run('copySubmittedTitles()');
+  assert.equal(h.get('submittedTitlesDialog').open,true);
+  assert.equal(h.get('submittedTitlesText').value,'【投屏】<script>literal</script>');
+  assert.match(h.get('submittedTitlesHint').textContent,/Ctrl\+C/);
+  assert.equal(h.context.document.activeElement,h.get('submittedTitlesText'));
+  const written=[];h.context.navigator.clipboard.writeText=async text=>written.push(text);
+  h.run('state={settings:{},bugs:[]};');
+  await h.run('copySubmittedTitlesFromDialog()');
+  assert.deepEqual(written,['【投屏】<script>literal</script>']);
+  assert.equal(h.calls.length,0);
+});
+
+test('legacy submitted titles keep the current full local title and disclose the missing historical value',async()=>{
+  const h=harness('app.js'),written=[];
+  h.context.navigator={clipboard:{writeText:async text=>written.push(text)}};
+  h.run('state={settings:{title_prefix:"【测试版本】"},bugs:[{id:"a",title:"【测试版本】已有前缀",status:"submitted",remote_id:1},{id:"b",title:"缺少前缀",status:"submitted",remote_id:2}]};');
+  await h.run('copySubmittedTitles()');
+  assert.deepEqual(written,['【测试版本】已有前缀\n【测试版本】缺少前缀']);
+  assert.equal(h.get('submittedTitlesDialog').open,true);
+  assert.match(h.get('submittedTitlesHint').textContent,/2 条旧记录/);
+  assert.equal(h.get('submittedTitlesText').value,written[0]);
+});
+
 test('cancelling folder relinking keeps the current batch and never starts a scan',async()=>{
   const h=saveHarness(),before=plain(h.run('state'));
   h.get('folderInput').value='D:/synthetic-new-location';h.context.chooseScanRelinks=async path=>{assert.equal(path,'D:/synthetic-new-location');return null;};
