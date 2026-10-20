@@ -4,7 +4,7 @@ display_name: BugDesk用例整理
 description: 从共享表格或用户粘贴的失败用例，结合原始备注与 Bug 文件夹标题归并同一问题的多个场景，整理完整报告并暂存到当前 BugDesk 草稿供用户核对，不执行禅道提交。
 description_zh: 结合失败备注、Bug 文件夹标题和用例事实，自行归并同一 Bug 的多条用例，保留各场景与来源，整理四项报告并暂存供核对。
 description_en: Group failed cases using their remarks, Bug folder titles and observed facts, compose one complete report per Bug, and stage it for human review without submitting bugs.
-version: 1.1.0
+version: 1.2.0
 author: BugDesk
 ---
 

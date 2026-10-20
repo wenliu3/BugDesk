@@ -197,9 +197,33 @@ class HTTPTests(unittest.TestCase):
             self.json("/api/submit", {"ids": [state["bugs"][0]["id"]]})
         self.assertEqual(result.exception.code, 400)
 
+    def test_every_scanned_attachment_reaches_the_connector_despite_a_legacy_mask(self):
+        bug = self.prepare_bug()
+        (Path(bug["folder"]) / "extra.log").write_text("synthetic log", encoding="utf-8")
+        state = self.json("/api/scan", {"path": str(Path(bug["folder"]).parent)})
+        bug = state["bugs"][0]
+        self.json("/api/save", {"bugs": [{"id": bug["id"], "reviewed": True, "review_token": bug["review_token"]}]})
+        self.app.workbench._batch()["bugs"][0]["excluded_attachments"] = [bug["attachments"][0]["id"]]
+        received = []
+
+        class AllFilesClient:
+            def create_bug(self, current, settings, attachments):
+                received.extend(item["name"] for item in attachments)
+                return {"id": 125, "url": "https://company.test/bug/125",
+                        "upload_status": {item["id"]: "uploaded" for item in attachments}}
+
+        self.app.client = AllFilesClient()
+        self.app.connection = {"connected": True, "first_verified": False, "url": "https://company.test"}
+        self.json("/api/submit", {"ids": [bug["id"]]})
+        self.wait_job()
+        self.assertCountEqual(received, [item["name"] for item in bug["attachments"]])
+        self.assertEqual(self.app.state()["bugs"][0]["status"], "submitted")
+        self.assertTrue(self.app.connection["first_verified"])
+
     def test_no_attachment_submission_does_not_verify_upload_integration(self):
         bug = self.prepare_bug()
-        state = self.json("/api/save", {"bugs": [{"id": bug["id"], "excluded_attachments": [a["id"] for a in bug["attachments"]]}]})
+        Path(bug["attachments"][0]["path"]).unlink()
+        state = self.json("/api/scan", {"path": str(Path(bug["folder"]).parent)})
         self.json("/api/save", {"bugs": [{"id": bug["id"], "reviewed": True, "review_token": state["bugs"][0]["review_token"]}]})
         class NoFilesClient:
             def create_bug(self, bug, settings, attachments):

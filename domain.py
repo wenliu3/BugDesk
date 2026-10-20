@@ -209,6 +209,9 @@ class Workbench:
                     bug["updated_at"] = _now()
                     self._history(batch, bug)
                     changed = True
+                if self._use_all_attachments(bug):
+                    batch["warnings"].append("附件现已全部随 Bug 上传，旧草稿中排除的附件已恢复，请重新核对并审核。")
+                    changed = True
         if changed or (self._load_warnings and not self._state_path.exists()):
             self._persist()
 
@@ -216,6 +219,16 @@ class Workbench:
     def _empty_store():
         return {"version": 1, "active_batch": "", "batches": {}, "profiles": [],
                 "active_profile": "", "default_settings": copy.deepcopy(DEFAULT_SETTINGS), "history": []}
+
+    @staticmethod
+    def _use_all_attachments(bug):
+        """Retire old draft exclusions without rewriting submission history."""
+        if not bug.get("excluded_attachments") or Workbench._case_locked(bug):
+            return False
+        bug["excluded_attachments"] = []
+        bug["reviewed"] = False
+        bug["updated_at"] = _now()
+        return True
 
     @staticmethod
     def _decode(raw):
@@ -422,7 +435,7 @@ class Workbench:
                                       "mtime_ns": info.st_mtime_ns}
                         attachments.append(attachment)
                         if info.st_size > MAX_ATTACHMENT_SIZE:
-                            warnings.append(f"附件超过 500 MB，请取消勾选或压缩后重扫：{folder.name} / {relative}")
+                            warnings.append(f"附件超过 500 MB，请在原文件夹压缩或移除后重新扫描：{folder.name} / {relative}")
                 except OSError:
                     warnings.append(f"无法读取附件：{path}")
         return sorted(attachments, key=lambda item: _natural(item["name"]))
@@ -660,6 +673,8 @@ class Workbench:
                     bug["attachments"] = attachments
                     bug["folder"] = str(folder)
                     bug["excluded_attachments"] = [item for item in bug.get("excluded_attachments", []) if item in current]
+                    if self._use_all_attachments(bug):
+                        warnings.append("附件现已全部随 Bug 上传，旧草稿中排除的附件已恢复，请重新核对并审核。")
                     active_ids.append(bug["id"])
                 except OSError:
                     warnings.append(f"无法读取 Bug 文件夹：{folder.name}")
@@ -903,10 +918,8 @@ class Workbench:
                         elif field == "excluded_attachments":
                             if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
                                 raise ValueError("附件选择格式不正确。")
-                            available = {item["id"] for item in bug["attachments"]}
-                            if any(item not in available for item in value):
-                                raise ValueError("附件已变化，请重新扫描后选择。")
-                            value = list(dict.fromkeys(value))
+                            if value:
+                                raise ValueError("不再支持单独排除附件。附件会全部上传，请在原文件夹移除不需要的文件后重新扫描。")
                         elif field == "selected" and not isinstance(value, bool):
                             raise ValueError("Bug 选择状态格式不正确。")
                         if bug.get(field) != value:
@@ -951,9 +964,8 @@ class Workbench:
 
     def _review_token(self, bug, shared_settings):
         effective_bug, settings = self._effective(bug, shared_settings)
-        excluded = set(bug.get("excluded_attachments", []))
         attachments = [{field: item.get(field) for field in ("id", "name", "size", "mtime_ns")}
-                       for item in bug.get("attachments", []) if item["id"] not in excluded]
+                       for item in bug.get("attachments", [])]
         attachments.sort(key=lambda item: (item["id"], item["name"]))
         material = {"id": bug["id"], "settings": settings, "attachments": attachments}
         material["case_source"] = copy.deepcopy(bug.get("case_source", {}))
@@ -1002,10 +1014,7 @@ class Workbench:
                         raise OSError("Bug 目录已变化")
                 except OSError as exc:
                     raise ValueError(f"「{title}」的文件夹已不存在或变成链接，请重新扫描。") from exc
-                excluded = set(bug.get("excluded_attachments", []))
                 for attachment in bug["attachments"]:
-                    if attachment["id"] in excluded:
-                        continue
                     evidence = Path(attachment["path"])
                     try:
                         info = evidence.lstat()
@@ -1025,7 +1034,7 @@ class Workbench:
                     if info.st_size != attachment["size"] or info.st_mtime_ns != attachment.get("mtime_ns", info.st_mtime_ns):
                         raise ValueError(f"「{title}」的附件已经变化，请重新扫描并复核：{attachment['name']}")
                     if info.st_size > MAX_ATTACHMENT_SIZE:
-                        raise ValueError(f"附件超过 500 MB，请取消勾选或压缩：{attachment['name']}")
+                        raise ValueError(f"附件超过 500 MB，请在原文件夹压缩或移除后重新扫描：{attachment['name']}")
                 results.append((effective_bug, settings))
             return results
 
@@ -1164,8 +1173,7 @@ class Workbench:
                                   f"反馈者：{settings.get('feedbackBy', '')}",
                                   f"影响版本：{settings.get('build_name') or ', '.join(settings.get('openedBuild', []))}", "",
                                   self._description(bug), "", "附件："])
-                    excluded = set(bug["excluded_attachments"])
-                    lines.extend([f"- {item['name']}（{item['size']} 字节{'，已排除' if item['id'] in excluded else ''}）" for item in bug["attachments"]] or ["- 无"])
+                    lines.extend([f"- {item['name']}（{item['size']} 字节）" for item in bug["attachments"]] or ["- 无"])
                     if bug.get("remote_id"):
                         lines.extend(["", f"禅道 Bug：{bug['remote_id']}", f"禅道链接：{bug.get('remote_url', '')}"])
                     lines.append("")
@@ -1176,12 +1184,11 @@ class Workbench:
                 writer.writerow(["标题", "前置条件", "复现步骤", "实际结果", "预期结果", "产品", "项目", "执行", "影响版本", "指派人", "反馈者", "严重程度", "优先级", "概率", "状态", "附件", "禅道编号", "禅道链接"])
                 for source in state["bugs"]:
                     bug, settings = self._effective(source)
-                    excluded = set(bug["excluded_attachments"])
                     values = [bug["title"], bug.get("preconditions", ""), bug["steps"], bug["actual"], bug["expected"],
                               settings.get("product_name") or settings["product"], settings.get("project_name") or settings["project"],
                               settings.get("execution_name") or settings["execution"], settings.get("build_name") or ", ".join(settings["openedBuild"]),
                               settings.get("assignee_name") or settings["assignedTo"], settings.get("feedbackBy", ""), settings["severity"], settings["pri"], settings["probability"],
-                              bug["status"], "\n".join(item["name"] for item in bug["attachments"] if item["id"] not in excluded),
+                              bug["status"], "\n".join(item["name"] for item in bug["attachments"]),
                               bug.get("remote_id"), bug.get("remote_url", "")]
                     writer.writerow([_csv_safe(item) for item in values])
                 content = "\ufeff" + buffer.getvalue()
@@ -1305,8 +1312,9 @@ class Workbench:
                     bug["upload_status"] = copy.deepcopy(item["upload_status"])
                 # Never downgrade a locally known submission by importing an old draft.
                 if known and (known.get("remote_id") or known.get("status") in TERMINAL_STATUSES):
-                    for field in ("status", "remote_id", "remote_url", "error", "upload_status", "case_source", "case_sources"):
+                    for field in ("status", "remote_id", "remote_url", "error", "upload_status", "case_source", "case_sources", "excluded_attachments"):
                         bug[field] = copy.deepcopy(known.get(field))
+                self._use_all_attachments(bug)
                 existing[identity] = bug
                 active.append(bug["id"])
             batch.update(bugs=list(existing.values()), active_ids=active, requires_rescan=True,

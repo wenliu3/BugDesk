@@ -130,11 +130,9 @@ class DraftUndoTests(unittest.TestCase):
         self.assertEqual(bug["title"], "Bug A")
         self.assertEqual(bug["attachments"][0]["name"], "evidence.txt")
 
-    def test_public_settings_title_and_exclusions_block_undo(self):
+    def test_public_settings_and_title_block_undo(self):
         for patch_value in ({"settings": {"product": "3"}},
-                            {"bugs": [{"id": self.ids[0], "title": "新标题"}]},
-                            {"bugs": [{"id": self.ids[0], "excluded_attachments": [
-                                self.workbench.state()["bugs"][0]["attachments"][0]["id"]]}]}):
+                            {"bugs": [{"id": self.ids[0], "title": "新标题"}]}):
             with self.subTest(patch=patch_value):
                 self.apply()
                 self.workbench.save(patch_value)
@@ -306,15 +304,15 @@ class DraftUndoTests(unittest.TestCase):
             self.undo()
         self.assertEqual(self.workbench.state(), before)
 
-    def test_excluded_evidence_is_still_checked_on_disk(self):
-        bug = self.workbench.state()["bugs"][0]
-        self.workbench.save({"bugs": [{"id": bug["id"], "excluded_attachments": [bug["attachments"][0]["id"]]}]})
+    def test_removed_attachment_switch_cannot_modify_drafts_or_break_undo(self):
         self.apply()
+        bug = self.workbench.state()["bugs"][0]
+        before = self.workbench.state()
+        with self.assertRaisesRegex(ValueError, "不再支持单独排除"):
+            self.workbench.save({"bugs": [{"id": bug["id"], "excluded_attachments": [bug["attachments"][0]["id"]]}]})
+        self.assertEqual(self.workbench.state(), before)
         self.assertTrue(self.workbench.undo_status()["available"])
-        (self.root / "Bug A" / "evidence.txt").unlink()
-        self.assertFalse(self.workbench.undo_status()["available"])
-        with self.assertRaises(ValueError):
-            self.undo()
+        self.undo()
 
     def test_new_file_without_rescan_changes_directory_guard(self):
         self.apply()

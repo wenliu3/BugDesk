@@ -18,12 +18,13 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
 import webbrowser
 
-from domain import Workbench
+from domain import Workbench, _is_link
+from attachment_preview import preview_attachment
 from case_clipboard import parse_cases
 from workbuddy import WorkBuddyBridge
 from zentao import ZenTaoClient, ConnectorError
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 ASSET_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "web"
 
 
@@ -241,8 +242,7 @@ class Application:
                         self.job["results"].append({"id": bug_id, **fields})
                         self.job["cancel_requested"] = True
                     break
-                excluded = set(bug.get("excluded_attachments", []))
-                attachments = [a for a in bug.get("attachments", []) if a["id"] not in excluded]
+                attachments = list(bug.get("attachments", []))
                 try:
                     with self.remote_lock:
                         result = client.create_bug(bug, settings, attachments)
@@ -288,11 +288,20 @@ class Application:
         for entry in bug.get("attachments", []):
             if entry["id"] != attachment_id:
                 continue
-            path = Path(entry["path"])
-            folder = Path(bug["folder"]).resolve()
-            resolved = path.resolve()
-            if path.is_symlink() or not resolved.is_relative_to(folder) or not resolved.is_file():
-                raise ValueError("附件已移动或不在此 Bug 文件夹中，请重新扫描。")
+            path = Path(entry["path"]).absolute()
+            folder = Path(bug["folder"]).absolute()
+            try:
+                if not path.is_relative_to(folder):
+                    raise ValueError("附件已移动或不在此 Bug 文件夹中，请重新扫描。")
+                # Recheck parents: a previously scanned directory may have been
+                # replaced with a symlink or Windows junction since the scan.
+                if any(_is_link(part) for part in (path, *path.parents)):
+                    raise ValueError("附件路径已变成链接，请重新扫描。")
+                resolved = path.resolve(strict=True)
+                if not resolved.is_relative_to(folder.resolve(strict=True)) or not resolved.is_file():
+                    raise ValueError("附件已移动或不在此 Bug 文件夹中，请重新扫描。")
+            except OSError:
+                raise ValueError("附件已移动或无法读取，请重新扫描。") from None
             return resolved
         raise ValueError("找不到这个附件，请重新扫描。")
 
@@ -353,7 +362,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "DENY")
+        extra = dict(extra or {})
+        self.send_header("X-Frame-Options", extra.pop("X-Frame-Options", "DENY"))
         if length is not None:
             self.send_header("Content-Length", str(length))
         for key, value in (extra or {}).items():
@@ -421,9 +431,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self.application.job_state())
             if path == "/api/ping":
                 return self._json({"ok": True})
-            if path == "/api/attachment":
+            if path in ("/api/attachment", "/api/attachment-preview"):
                 attachment = self.application.attachment(query.get("bug_id", [""])[0], query.get("attachment_id", [""])[0])
-                return self._file(attachment, media=True)
+                if path == "/api/attachment-preview":
+                    return self._json(preview_attachment(attachment))
+                return self._file(attachment, media=True, download=query.get("download", [""])[0] == "1")
             if path == "/api/download":
                 export_id = query.get("file", [""])[0]
                 export_path = self.application.exports.get(export_id)
@@ -432,14 +444,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(Path(export_path), download=True)
             assets = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/app.js": "app.js", "/case_import.js": "case_import.js", "/workbuddy.js": "workbuddy.js", "/workbuddy_help.js": "workbuddy_help.js", "/workbuddy_help.css": "workbuddy_help.css", "/relink.js": "relink.js", "/relink.css": "relink.css"}
             assets['/help/workbuddy-3-workbuddy.png'] = 'help/workbuddy-3-workbuddy.png'
+            assets['/attachment_preview.js'] = 'attachment_preview.js'
+            assets['/attachment_preview.css'] = 'attachment_preview.css'
+            assets['/bugdesk-logo.png'] = 'bugdesk-logo.png'
+            assets['/favicon.ico'] = 'favicon.ico'
             for step in range(1, 5):
                 name = f'help/workbuddy-{step}-' + ('scan', 'send', 'preview', 'import')[step - 1] + '.jpg'
                 assets['/' + name] = name
             if path in assets:
                 file = ASSET_DIR / assets[path]
                 body = file.read_bytes()
-                content_type = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg"}[file.suffix]
-                csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+                content_type = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/vnd.microsoft.icon"}[file.suffix]
+                csp = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
                 self._headers(content_type=content_type, length=len(body), extra={"Content-Security-Policy": csp})
                 return self.wfile.write(body)
             return self._json({"error": "找不到这个页面。"}, 404)
@@ -453,13 +469,26 @@ class Handler(BaseHTTPRequestHandler):
     def _file(self, path: Path, media=False, download=False):
         size = path.stat().st_size
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        inline_pdf = False
+        if media and not download and path.suffix.casefold() == ".pdf":
+            with path.open("rb") as stream:
+                inline_pdf = stream.read(1024).lstrip().startswith(b"%PDF-")
+            if inline_pdf:
+                mime = "application/pdf"
         allowed_media = (mime.startswith("image/") or mime.startswith("video/") or mime.startswith("audio/"))
-        if media and not allowed_media:
+        if media and not (allowed_media or inline_pdf):
             mime, download = "application/octet-stream", True
         start, end, status = 0, size - 1, 200
         extra = {"Accept-Ranges": "bytes"}
         if mime == "image/svg+xml":
             extra["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+        if inline_pdf:
+            extra["X-Frame-Options"] = "SAMEORIGIN"
+            # Chromium's native PDF viewer embeds the same PDF internally.
+            # Permit that only on the PDF response, never on the workbench.
+            extra["Content-Security-Policy"] = "default-src 'none'; object-src 'self'; frame-ancestors 'self'; base-uri 'none'"
+            from urllib.parse import quote
+            extra["Content-Disposition"] = "inline; filename*=UTF-8''" + quote(path.name)
         if download:
             from urllib.parse import quote
             extra["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(path.name)

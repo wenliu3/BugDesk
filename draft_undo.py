@@ -129,7 +129,7 @@ def _evidence_state(bug, batch):
 
 def _guard(bug, store, batch_key):
     # Selection and review may change after import.  Everything else, including
-    # excluded evidence metadata and failed submission attempts, blocks undo.
+    # legacy attachment metadata and failed submission attempts, blocks undo.
     content = {key: value for key, value in bug.items()
                if key not in {"selected", "reviewed", "updated_at", "review_token"}}
     lifecycle = [item for item in store.get("history", [])

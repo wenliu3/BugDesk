@@ -1,8 +1,8 @@
-BugDesk + WorkBuddy 1.1.0 接入说明
+BugDesk + WorkBuddy 1.2.0 接入说明
 ============================
 
 一、安装配套技能
-在 https://github.com/wenliu3/BugDesk/releases/latest 下载 BugDesk-WorkBuddy-Skill-1.1.0.zip，按 WorkBuddy 客户端提供的技能导入流程安装。技能标识为 bugdesk-workbuddy，名称为「BugDesk用例整理」。技能 ZIP 可直接导入；不使用 WorkBuddy 时仍可手工整理 Bug。技能源码位于仓库 integrations/bugdesk-workbuddy。
+在 https://github.com/wenliu3/BugDesk/releases/latest 下载 BugDesk-WorkBuddy-Skill-1.2.0.zip，按 WorkBuddy 客户端提供的技能导入流程安装。技能标识为 bugdesk-workbuddy，名称为「BugDesk用例整理」。技能 ZIP 可直接导入；不使用 WorkBuddy 时仍可手工整理 Bug。技能源码位于仓库 integrations/bugdesk-workbuddy。
 
 二、每天使用
 1. 打开 BugDesk，选择自己的 Bug 日期目录并扫描。

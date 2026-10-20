@@ -5,13 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>BugDesk · Bug 提交助手</title>
+  <link rel="icon" href="/favicon.ico" type="image/vnd.microsoft.icon">
   <script src="/app.js"></script>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/relink.css">
+  <link rel="stylesheet" href="/attachment_preview.css">
   <link rel="stylesheet" href="/workbuddy_help.css">
   <script src="/workbuddy_help.js" defer></script>
   <script src="/case_import.js" defer></script>
   <script src="/relink.js" defer></script>
+  <script src="/attachment_preview.js" defer></script>
   <script src="/workbuddy.js" defer></script>
 </head>
 <body>
@@ -19,7 +22,7 @@
     <main class="main">
       <header class="topbar">
         <div class="workspace-identity">
-          <button class="brand" id="workbenchButton" aria-label="今日 Bug 工作台"><span class="brand-mark" data-icon="bug"></span><span>BugDesk</span></button>
+          <button class="brand" id="workbenchButton" aria-label="今日 Bug 工作台"><span class="brand-mark"><img src="/bugdesk-logo.png" alt="" width="36" height="36"></span><span>BugDesk</span></button>
           <span class="header-divider" aria-hidden="true"></span>
           <details class="header-popover folder-picker" id="folderPicker">
             <summary title="选择或重新扫描 Bug 文件夹"><span data-icon="folder"></span><span id="batchName">选择 Bug 文件夹</span><span class="folder-chevron" data-icon="chevron"></span></summary>
@@ -65,7 +68,7 @@
   <dialog id="reviewDialog" class="modal review-modal"><div class="modal-header"><div><span class="eyebrow">提交前最后看一遍</span><h2 id="reviewTitle">审核 Bug</h2></div><button class="icon-button" data-close="reviewDialog" aria-label="关闭"><span data-icon="close"></span></button></div><div class="modal-body"><p id="reviewIntro" class="muted-copy"></p><div id="reviewItems" class="review-items"></div></div><div class="modal-footer"><span id="reviewHint" class="footer-hint"></span><button class="button secondary" data-close="reviewDialog">返回修改</button><button class="button primary" id="confirmReviewButton"><span data-icon="check"></span>确认描述与附件无误</button></div></dialog>
   <dialog id="submitDialog" class="modal"><div class="modal-header"><h2>确认提交到禅道</h2><button class="icon-button" data-close="submitDialog" aria-label="关闭"><span data-icon="close"></span></button></div><div class="modal-body"><div id="submitIntro" class="notice info"></div><div id="submitItems"></div><p class="field-help">已成功创建的 Bug 不会重复提交。若请求结果不明确，请先在禅道核对。</p></div><div class="modal-footer"><button class="button secondary" data-close="submitDialog">返回</button><button class="button primary" id="confirmSubmitButton"><span data-icon="send"></span>确认提交</button></div></dialog>
   <dialog id="exportDialog" class="modal"><div class="modal-header"><h2>导出与备份</h2><button class="icon-button" data-close="exportDialog" aria-label="关闭"><span data-icon="close"></span></button></div><div class="modal-body"><p class="muted-copy">导出本批次标题、描述、公共信息和附件清单。</p><div class="export-options"><button class="export-option" data-export="markdown"><span data-icon="file"></span><strong>Markdown 报告</strong><small>适合阅读、复制和归档</small></button><button class="export-option" data-export="csv"><span data-icon="layers"></span><strong>CSV 表格</strong><small>用 Excel 汇总与检查</small></button><button class="export-option" data-export="json"><span data-icon="download"></span><strong>JSON 备份</strong><small>保留完整编辑记录，可重新导入</small></button></div><div class="import-row"><span>恢复之前的 JSON 备份</span><button class="button secondary" id="importButton">导入备份</button><input id="importFile" type="file" accept="application/json,.json" hidden></div><div id="exportResult" hidden></div></div><div class="modal-footer"><button class="button secondary" data-close="exportDialog">关闭</button></div></dialog>
-  <dialog id="previewDialog" class="modal media-modal"><div class="modal-header"><h2 id="previewTitle">附件预览</h2><button class="icon-button" data-close="previewDialog" aria-label="关闭"><span data-icon="close"></span></button></div><div id="previewContent" class="media-preview"></div></dialog>
+  <dialog id="previewDialog" class="modal media-modal attachment-preview-modal" aria-labelledby="previewTitle"><h2 id="previewTitle" class="attachment-preview-title">附件预览</h2><button class="icon-button attachment-preview-close" data-close="previewDialog" aria-label="关闭预览" title="关闭预览（Esc）"><span data-icon="close"></span></button><div id="previewContent" class="media-preview"></div></dialog>
   <dialog id="helpDialog" class="modal"><div class="modal-header"><h2>让每天的 Bug 提交更轻松</h2><button class="icon-button" data-close="helpDialog" aria-label="关闭"><span data-icon="close"></span></button></div><div class="modal-body help-content"><ol><li><strong>保持你的文件夹习惯</strong><p>例如 D:\bug\10.13\Bug 标题\截图.png。当天目录下的每个子文件夹会成为一条 Bug。</p></li><li><strong>设置公共信息，补充事实</strong><p>公共信息整批复用。复现步骤、实际结果和预期结果按你的测试发现填写。工具不会猜测测试行为。</p></li><li><strong>审核，再提交</strong><p>检查完整描述和附件后确认审核。公司环境首次只试提 1 条；确认创建和上传成功后可批量提交。</p></li></ol><div class="shortcut-grid"><kbd>Ctrl + S</kbd><span>立即保存</span><kbd>Ctrl + Enter</kbd><span>审核当前 Bug</span><kbd>Alt + ↑ / ↓</kbd><span>切换上一条 / 下一条</span></div><p class="field-help">内容自动保存在本机；便携版保存在程序旁的 BugDesk-data 文件夹。扫描与整理不需要联网，提交时才连接你的公司禅道。</p></div><div class="modal-footer"><button class="button primary" data-close="helpDialog">知道了</button></div></dialog>
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 </body>

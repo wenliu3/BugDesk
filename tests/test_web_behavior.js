@@ -46,6 +46,23 @@ function saveHarness(){
   h.run('api=async(path,payload)=>testSave(payload);');
   return h;
 }
+
+test('attachment cards preview every file without upload switches or legacy exclusions',()=>{
+  const h=harness('app.js');
+  h.context.attachmentExample={id:'bug',attachments:[
+    {id:'a',name:'image.png',mime:'image/png',size:5},
+    {id:'b',name:'recording.mp4',mime:'video/mp4',size:10}
+  ],excluded_attachments:['a']};
+  h.run('renderAttachments($("testAttachmentList"),attachmentExample,false);');
+  const list=h.get('testAttachmentList');
+  assert.equal(list.querySelectorAll('input').length,0);
+  assert.equal(list.querySelectorAll('button').length,2);
+  assert.equal(h.run('includedAttachments(attachmentExample).length'),2);
+  h.context.attachmentOpened=[];
+  h.run('showAttachment=(bug,file)=>attachmentOpened.push(file.id);');
+  h.fire(list.querySelectorAll('button')[0],'click');
+  assert.deepEqual(plain(h.context.attachmentOpened),['a']);
+});
 const appearanceSource=fs.readFileSync(path.join(__dirname,'..','web','app.js'),'utf8').match(/\/\* Appearance bootstrap[^\n]*\*\/([\s\S]*?)\/\* UI icons \*\//)[1];
 function appearanceHarness({cookie='',stored=null,dark=false,blocked=false}={}){
   const events={},systemEvents={},writes=[],root={dataset:{}},system={matches:dark,addEventListener(type,callback){systemEvents[type]=callback;}};

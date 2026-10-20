@@ -149,13 +149,15 @@ class WorkBuddyTests(unittest.TestCase):
         self.assertNotIn("folder", context["bugs"][0])
         self.assertNotIn("remote_id", context["bugs"][0])
 
-    def test_context_excludes_locked_bugs_and_excluded_attachments(self):
+    def test_context_excludes_locked_bugs_and_keeps_all_evidence_names(self):
         bugs = self.app.workbench.state()["bugs"]
         self.app.workbench.set_submission(bugs[0]["id"], status="submitted", remote_id=123)
-        self.app.workbench.save({"bugs": [{"id": bugs[1]["id"], "excluded_attachments": [bugs[1]["attachments"][0]["id"]]}]})
+        # A stale legacy mask must never hide evidence from the assistant.
+        self.app.workbench._batch()["bugs"][1]["excluded_attachments"] = [bugs[1]["attachments"][0]["id"]]
         context = self.context()
         self.assertNotIn(bugs[0]["id"], {bug["id"] for bug in context["bugs"]})
-        self.assertEqual(next(bug for bug in context["bugs"] if bug["id"] == bugs[1]["id"])["attachments"], [])
+        self.assertEqual(next(bug for bug in context["bugs"] if bug["id"] == bugs[1]["id"])["attachments"],
+                         [{"name": item["name"]} for item in bugs[1]["attachments"]])
 
     def test_wrong_non_ascii_tokens_and_expired_session_fail_closed(self):
         for token in (None, "wrong", "中文令牌"):

@@ -28,8 +28,7 @@ class FolderRelinkTests(unittest.TestCase):
                                            "title_prefix": "【原产品】", "preconditions": "公共条件"},
                              "bugs": [{"id": self.bug_id, "title": "人工编辑标题", "preconditions": "条目条件",
                                        "steps": "独立操作", "actual": "实际现象", "expected": "预期行为",
-                                       "overrides": {"assignedTo": "synthetic_owner"},
-                                       "excluded_attachments": [bug["attachments"][0]["id"]]}]})
+                                       "overrides": {"assignedTo": "synthetic_owner"}}]})
         self.workbench.apply_cases([{"row_id": "source", "case_id": "CASE-1", "title": "合成用例"}],
             [{"row_id": "source", "bug_id": self.bug_id,
               "review_token": self.workbench.get_bug(self.bug_id)["review_token"]}], batch_key=self.batch_key)
@@ -107,7 +106,7 @@ class FolderRelinkTests(unittest.TestCase):
             self.apply(destination, preview, mappings)
         self.assertEqual(before, self.workbench._store)
 
-    def test_renamed_record_retains_report_sources_review_exclusions_and_identity(self):
+    def test_renamed_record_retains_report_sources_review_and_identity(self):
         before = self.workbench.get_bug(self.bug_id)
         moved = self.rename()
         evidence = {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in moved.iterdir()}
@@ -177,14 +176,15 @@ class FolderRelinkTests(unittest.TestCase):
         self.assertEqual(migrated["review_token"], source_before["review_token"])
         self.assertTrue(migrated["reviewed"])
 
-    def test_changed_evidence_requires_review_and_preserves_only_available_exclusions(self):
+    def test_changed_evidence_requires_review_and_keeps_all_attachments(self):
         moved = self.rename()
         (moved / "截图.png").write_bytes(b"updated screenshot")
         (moved / "新证据.txt").write_bytes(b"new")
         plan = self.workbench.preview_scan(str(self.evidence))
         state = self.apply(self.evidence, plan)
         self.assertFalse(state["bugs"][0]["reviewed"])
-        self.assertEqual(len(state["bugs"][0]["excluded_attachments"]), 1)
+        self.assertEqual(state["bugs"][0]["excluded_attachments"], [])
+        self.assertEqual(len(state["bugs"][0]["attachments"]), 3)
 
     def test_no_selection_creates_new_draft_without_inheriting_similar_title_or_remote_id(self):
         self.workbench.set_submission(self.bug_id, status="submitted", remote_id=123)

@@ -1,3 +1,5 @@
+<img src="web/bugdesk-logo.png" width="64" height="64" alt="BugDesk Logo">
+
 # BugDesk · Bug 提交助手
 
 把测试现场的 Bug 文件夹，整理成可核对、可提交的缺陷报告。
@@ -6,30 +8,34 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 
 **Python 3.11+ · 标准库运行 · 无前端构建 · 浅色 / 深色模式 · MIT**
 
-## 下载 1.1.0
+## 下载 1.2.0
 
-软件与 WorkBuddy 技能配套发布为 **1.1.0**，本次新增多用例归并、目录重新关联、覆盖对比和导入撤销。
+软件与 WorkBuddy 技能配套发布为 **1.2.0**，本次新增多格式本机附件预览，简化为全部附件随 Bug 上传，并使用字母 B 新 Logo。继续支持多用例归并、目录重新关联、覆盖对比和导入撤销。
 
 前往 [GitHub Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载：
 
 | 文件 | 用途 |
 | --- | --- |
-| `BugDesk-Windows-1.1.0.zip` | 推荐。解压后双击 `BugDesk.exe`，草稿保存在旁边的 `BugDesk-data`。无需安装 Python。 |
-| `BugDesk-1.1.0-Windows-x64.exe` | 单独的 Windows 64 位程序，双击运行；默认在 Windows 本地应用数据目录保存草稿。 |
-| `BugDesk-WorkBuddy-Skill-1.1.0.zip` | 可选，导入 WorkBuddy 的配套技能包；不需要解压后再压缩。 |
+| `BugDesk-Windows-1.2.0.zip` | 推荐。解压后双击 `BugDesk.exe`，草稿保存在旁边的 `BugDesk-data`。无需安装 Python。 |
+| `BugDesk-1.2.0-Windows-x64.exe` | 单独的 Windows 64 位程序，双击运行；默认在 Windows 本地应用数据目录保存草稿。 |
+| `BugDesk-WorkBuddy-Skill-1.2.0.zip` | 可选，导入 WorkBuddy 的配套技能包；不需要解压后再压缩。 |
 | `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
 
 ## 界面预览
 
 以下截图全部使用合成示例，不包含真实项目、人员、账号或内网地址。WorkBuddy 画面展示技能选择和任务输入，不代表任务已发送或执行完成。
 
-### 整理 Bug：清单与编辑区分别滚动
+### 工作台：清单与附件区分别滚动
 
 ![浅色工作台](docs/screenshots/workbench-light.png)
 
 ### 深色模式：一键切换并记住选择
 
 ![深色工作台](docs/screenshots/workbench-dark.png)
+
+### 附件预览：PDF 保留阅读工具，背景适度模糊
+
+![PDF 附件预览](docs/screenshots/attachment-preview-pdf.png)
 
 ### WorkBuddy：核对用例，再导入草稿
 
@@ -46,7 +52,8 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 ## 可以做什么
 
 - **扫描文件夹**：子文件夹名称作为初始标题，自动收集其中的图片、视频和其他附件，保留原始文件。
-- **整理测试事实**：编辑四项描述，自动保存；支持图片、视频预览和附件排除。
+- **整理测试事实**：编辑四项描述，自动保存；扫描到的附件全部随 Bug 上传，不需要逐项勾选。不需要的文件请从原始文件夹移除后重新扫描。
+- **查看多种附件**：图片、视频、音频可直接查看，PDF 使用浏览器内置阅读器；日志、文本、CSV / TSV、Excel（XLSX）、Word（DOCX）/ PPT（PPTX）正文与 ZIP 文件清单均可在本机预览。预览直接显示内容，点击外部或按 Esc 退出。Office 为内容预览，完整排版和不支持的格式可在原始文件夹中用本机应用查看。
 - **复用公共配置**：产品、版本、指派人、反馈者等整批复用；个别 Bug 可在「本条设置」中单独覆盖。
 - **粘贴用例**：读取 HTML 表格、TSV 和多行单元格，核对字段与关联后填入草稿。
 - **可选 WorkBuddy 整理**：结合原始备注、Bug 文件夹标题和用例事实，自行将同一 Bug 的多条失败用例整理为一份报告，保留全部来源；人工核对后导入，不自动审核或提交。
@@ -100,7 +107,7 @@ Bug 附件/
 
 ## 可选：接入 WorkBuddy
 
-从 [Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载 `BugDesk-WorkBuddy-Skill-1.1.0.zip`，按 WorkBuddy 客户端的技能导入流程安装。技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)，`SKILL.md`、`scripts` 和 `references` 位于技能 ZIP 根目录。
+从 [Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载 `BugDesk-WorkBuddy-Skill-1.2.0.zip`，按 WorkBuddy 客户端的技能导入流程安装。技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)，`SKILL.md`、`scripts` 和 `references` 位于技能 ZIP 根目录。
 
 在 BugDesk 扫描 Bug 后，开启「WorkBuddy 整理」中的本机连接，复制当次任务并附上失败用例。WorkBuddy 会依据相同或语义相关的原备注，结合 Bug 文件夹标题和各用例事实判断归属；备注无需与标题逐字一致。同一 Bug 的多条用例由 WorkBuddy 组合成一份完整报告：仅输入不同、流程和结果相同的，用公共步骤加完整 query / 参数清单，共同结果只写一次；条件、流程或结果有差异时再分组，例外单列。全部输入原句与来源保留供核对。每个已匹配 Bug 最多回传一份建议，归属不明时保持待核对，不新建 Bug。
 
@@ -135,6 +142,7 @@ Bug 附件/
 python -m unittest discover -s tests -v
 node tests/test_web_behavior.js
 node tests/test_relink_web.js
+node tests/test_attachment_preview_web.js
 ```
 
 Python 测试使用本地文件和模拟服务，不连接真实公司系统。前端检查需要 Node.js，运行程序本身不需要 Node.js。
@@ -145,7 +153,7 @@ Python 测试使用本地文件和模拟服务，不连接真实公司系统。�
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python build_windows.py --release 1.1.0
+python build_windows.py --release 1.2.0
 ```
 
 产物生成在 `release` 目录，包含便携版 ZIP、单独的 EXE、配套技能 ZIP 和校验值。脚本会核对软件与技能版本，并只收集明确列出的交付文件。生成的 EXE、用户数据和发布压缩包不纳入源码提交。

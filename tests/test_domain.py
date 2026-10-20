@@ -162,7 +162,7 @@ class WorkbenchTests(unittest.TestCase):
                 self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True, "review_token": old["review_token"]}]})
             self.assertFalse(self.workbench.get_bug(bug_id)["reviewed"])
 
-    def test_review_token_tracks_included_evidence_but_not_selected_or_review_flags(self):
+    def test_review_token_tracks_all_evidence_but_not_selected_or_review_flags(self):
         self.bug_folder()
         self.workbench.scan(str(self.evidence))
         bug_id = self.ready()
@@ -171,7 +171,8 @@ class WorkbenchTests(unittest.TestCase):
         unselected = self.workbench.get_bug(bug_id)
         self.assertEqual(before["review_token"], unselected["review_token"])
         self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True, "review_token": before["review_token"]}]})
-        self.workbench.save({"bugs": [{"id": bug_id, "excluded_attachments": [before["attachments"][0]["id"]]}]})
+        (Path(before["folder"]) / "extra.log").write_text("new synthetic evidence", encoding="utf-8")
+        self.workbench.scan(str(self.evidence))
         current = self.workbench.get_bug(bug_id)
         self.assertNotEqual(before["review_token"], current["review_token"])
         with self.assertRaisesRegex(ValueError, "重新打开复核"):
@@ -496,7 +497,73 @@ class WorkbenchTests(unittest.TestCase):
         self.workbench.save({"settings": {"feedbackBy": "姓" * 100}})
         self.assertEqual(self.workbench.get_settings()["feedbackBy"], "姓" * 100)
 
-    def test_oversize_attachment_requires_exclusion_and_temporary_links_are_skipped(self):
+    def test_legacy_draft_exclusions_are_retired_and_require_a_new_review(self):
+        folder = self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        original = (folder / "复现截图.png").read_bytes()
+        path = self.data / "state.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        bug = next(iter(stored["batches"].values()))["bugs"][0]
+        bug["excluded_attachments"] = [bug["attachments"][0]["id"]]
+        path.write_text(json.dumps(stored, ensure_ascii=False), encoding="utf-8")
+        restored = Workbench(self.data)
+        current = restored.get_bug(bug_id)
+        self.assertEqual(current["excluded_attachments"], [])
+        self.assertFalse(current["reviewed"])
+        self.assertTrue(any("排除的附件已恢复" in warning for warning in restored.state()["warnings"]))
+        with self.assertRaisesRegex(ValueError, "尚未复核"):
+            restored.validate_submission([bug_id])
+        self.assertEqual(Workbench(self.data).state(), restored.state())
+        self.assertEqual((folder / "复现截图.png").read_bytes(), original)
+
+    def test_legacy_submission_records_are_not_rewritten_by_attachment_migration(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        path = self.data / "state.json"
+        template = json.loads(path.read_text(encoding="utf-8"))
+        for status in ("submitted", "partial", "uncertain"):
+            with self.subTest(status=status):
+                stored = copy.deepcopy(template)
+                bug = next(iter(stored["batches"].values()))["bugs"][0]
+                excluded = [bug["attachments"][0]["id"]]
+                bug.update(status=status, remote_id=123, excluded_attachments=excluded)
+                path.write_text(json.dumps(stored, ensure_ascii=False), encoding="utf-8")
+                restored = Workbench(self.data).get_bug(bug_id)
+                self.assertEqual(restored["status"], status)
+                self.assertEqual(restored["remote_id"], 123)
+                self.assertEqual(restored["excluded_attachments"], excluded)
+                self.assertEqual(restored["reviewed"], bug["reviewed"])
+
+    def test_legacy_backup_cannot_restore_an_active_attachment_exclusion(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        self.ready()
+        backup = json.loads(Path(self.workbench.export("json")).read_text(encoding="utf-8"))
+        bug = backup["state"]["bugs"][0]
+        bug["excluded_attachments"] = [bug["attachments"][0]["id"]]
+        destination = Workbench(self.root / "restored")
+        imported = destination.import_backup(backup)
+        self.assertEqual(imported["bugs"][0]["excluded_attachments"], [])
+        self.assertFalse(imported["bugs"][0]["reviewed"])
+        rescanned = destination.scan(str(self.evidence))
+        self.assertEqual(len(rescanned["bugs"][0]["attachments"]), 1)
+        self.assertEqual(rescanned["bugs"][0]["excluded_attachments"], [])
+
+    def test_rejected_attachment_exclusion_does_not_save_other_changes(self):
+        self.bug_folder()
+        self.workbench.scan(str(self.evidence))
+        bug_id = self.ready()
+        before = self.workbench.state()
+        with self.assertRaisesRegex(ValueError, "不再支持单独排除"):
+            self.workbench.save({"settings": {"product": "99"}, "bugs": [{
+                "id": bug_id, "actual": "should not be saved",
+                "excluded_attachments": [before["bugs"][0]["attachments"][0]["id"]]}]})
+        self.assertEqual(self.workbench.state(), before)
+        self.assertEqual(Workbench(self.data).state(), before)
+
+    def test_oversize_attachment_requires_local_file_change_and_rescan(self):
         self.bug_folder()
         with patch("domain.MAX_ATTACHMENT_SIZE", 4):
             state = self.workbench.scan(str(self.evidence))
@@ -505,7 +572,10 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "超过 500 MB"):
                 self.workbench.validate_submission([bug_id])
             attachment_id = state["bugs"][0]["attachments"][0]["id"]
-            self.workbench.save({"bugs": [{"id": bug_id, "excluded_attachments": [attachment_id]}]})
+            with self.assertRaisesRegex(ValueError, "不再支持单独排除"):
+                self.workbench.save({"bugs": [{"id": bug_id, "excluded_attachments": [attachment_id]}]})
+            Path(state["bugs"][0]["attachments"][0]["path"]).unlink()
+            self.workbench.scan(str(self.evidence))
             self.workbench.save({"bugs": [{"id": bug_id, "reviewed": True}]})
             self.assertEqual(len(self.workbench.validate_submission([bug_id])), 1)
 

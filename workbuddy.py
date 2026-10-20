@@ -185,9 +185,7 @@ class WorkBuddyBridge:
     def _public_bug(bug):
         value = {key: copy.deepcopy(bug.get(key, {} if key == "case_source" else "")) for key in BUG_FIELDS}
         value["case_sources"] = copy.deepcopy(bug.get("case_sources", [bug["case_source"]] if bug.get("case_source") else []))
-        excluded = set(bug.get("excluded_attachments", []))
-        value["attachments"] = [{"name": item["name"]} for item in bug.get("attachments", [])
-                                if item.get("id") not in excluded]
+        value["attachments"] = [{"name": item["name"]} for item in bug.get("attachments", [])]
         return value
 
     def context(self, token):
