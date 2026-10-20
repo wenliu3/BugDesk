@@ -1,0 +1,39 @@
+/* Folder relinking uses the existing modal and theme without changing the workspace. */
+.scan-relink-modal{width:calc(100vw - 40px);max-width:1000px;max-height:calc(100dvh - 40px)}
+.scan-relink-body{min-height:0;overflow:auto;overscroll-behavior:contain}
+.scan-relink-intro{font-size:13px;line-height:1.9;margin:0 0 8px;color:var(--home-ink,#263745)}
+.scan-relink-root,.scan-relink-path{font-size:11px;line-height:1.8;overflow-wrap:anywhere;color:var(--home-muted,#768590);margin:5px 0}
+.scan-relink-policy{margin:14px 0;font-size:12px;line-height:1.8}
+.scan-relink-policy p{margin:4px 0}
+.scan-relink-tools{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;padding:14px 0 5px}
+.scan-relink-batch{display:flex;flex-direction:column;gap:7px;min-width:0;flex:1 1 320px;font-size:11px;color:var(--home-muted,#768590)}
+.scan-relink-batch select,.scan-relink-label select{width:100%;min-width:0;padding:10px 11px;border:1px solid var(--home-line,#e5ebee);border-radius:7px;background:#fff;color:var(--home-ink,#263745);font:inherit;font-size:12px;text-overflow:ellipsis}
+.scan-relink-tools>.button{font-size:11px;min-height:38px;flex-shrink:0}
+.scan-relink-tools>.text-button{font-size:11px;margin:0 0 9px}
+.scan-relink-announcement{min-height:21px;font-size:11px;line-height:1.8;color:var(--home-accent,#087f76);margin:7px 0 10px;overflow-wrap:anywhere}
+.scan-relink-rows{display:flex;flex-direction:column;gap:12px}
+.scan-relink-row{display:grid;grid-template-columns:minmax(0,0.8fr) minmax(0,1.2fr);gap:18px;padding:16px;border:1px solid var(--home-line,#e5ebee);border-radius:9px;background:#fff}
+.scan-relink-target,.scan-relink-selection{min-width:0}
+.scan-relink-caption,.scan-relink-label>span{font-size:11px;line-height:1.8;color:var(--home-muted,#768590)}
+.scan-relink-target h3{font-size:14px;line-height:1.8;font-weight:550;color:var(--home-ink,#263745);margin:5px 0;overflow-wrap:anywhere}
+.scan-relink-label{display:flex;flex-direction:column;gap:7px}
+.scan-relink-detail{font-size:11px;line-height:1.8;margin-top:9px;overflow-wrap:anywhere}
+.scan-relink-detail p{margin:5px 0}
+.scan-relink-saved-title{font-size:12px;color:var(--home-ink,#263745)}
+.scan-relink-new,.scan-relink-settings{color:var(--home-muted,#768590)}
+.scan-relink-state{color:var(--home-accent,#087f76)}
+.scan-relink-footer .footer-hint{margin-right:auto;white-space:normal;min-width:0;font-size:11px;line-height:1.8}
+.scan-relink-footer .button{flex-shrink:0}
+:root[data-theme=dark] .scan-relink-row{background:var(--night-panel,#172630)}
+:root[data-theme=dark] .scan-relink-batch select,:root[data-theme=dark] .scan-relink-label select{background:var(--night-input,#12212b);color:var(--night-text,#d4e1e8);border-color:var(--night-line,#2b3f4b)}
+:root[data-theme=dark] .scan-relink-announcement,:root[data-theme=dark] .scan-relink-state{color:var(--night-accent,#69d3bd)}
+@media(max-width:700px){
+  .scan-relink-modal{width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}
+  .scan-relink-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:13px}
+  .scan-relink-tools{align-items:stretch}
+  .scan-relink-batch{flex-basis:100%}
+  .scan-relink-tools>.text-button{margin:0}
+  .scan-relink-footer{flex-wrap:wrap}
+  .scan-relink-footer .footer-hint{flex-basis:100%}
+  .scan-relink-footer .button{flex:1 1 auto;padding-left:10px;padding-right:10px}
+}

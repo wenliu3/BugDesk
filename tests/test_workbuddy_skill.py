@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import threading
 import unittest
+from contextlib import contextmanager
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -34,6 +36,125 @@ class WorkBuddySkillTests(unittest.TestCase):
         self.assertNotIn(secret, output)
         self.assertNotIn(str(connection_file), output)
         return result.returncode, json.loads(output)
+
+    @contextmanager
+    def accepting_stage_server(self):
+        """Record requests without server validation, to test the helper's boundary."""
+        instance = "isolated-grouped-script-instance"
+        secret = "isolated_grouped_token_12345678901234567890"
+        received = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def respond(self, value):
+                data = json.dumps(value, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                if self.path != "/health":
+                    self.send_error(404)
+                    return
+                self.respond({"app": "BugDesk", "instance": instance})
+
+            def do_POST(self):
+                if self.path != "/api/workbuddy/stage" or self.headers.get("X-BugDesk-WorkBuddy-Token") != secret:
+                    self.send_error(403)
+                    return
+                value = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                received.append(value)
+                count = len(value["rows"])
+                self.respond({"plan_id": "isolated-stage-plan", "summary": {
+                    "total": count, "exact": 0, "suggested": count, "unmatched": 0}})
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            connection = Path(self.temp.name) / "isolated-grouped-script-session.json"
+            connection.write_text(json.dumps({"schema": 1, "url": f"http://127.0.0.1:{server.server_port}/",
+                "instance": instance, "token": secret,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()}), encoding="utf-8")
+            yield connection, received
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
+
+    @staticmethod
+    def grouped_row():
+        source = {"case_id": "DEMO-CA1", "title": "来源用例一", "group": "演示/故事", "tester": "测试人员",
+                  "date": "2026-10-19T12:34:56Z", "preconditions": "已启动\n处于首页",
+                  "steps": "1.语音：讲个恐怖故事", "expected": "不播报恐怖故事",
+                  "actual": "【示例版本】设备仍播报故事", "source_actual": "【示例版本】设备仍播报故事"}
+        second = {**source, "case_id": "DEMO-CA2", "title": "来源用例二",
+                  "steps": "1.语音：讲个鬼故事", "expected": "不播报鬼故事"}
+        return {"case_id": "", "title": "两个故事请求场景", "group": "演示/故事", "tester": "", "date": "",
+                "preconditions": source["preconditions"],
+                "steps": "场景一：讲个恐怖故事\n场景二：讲个鬼故事",
+                "expected": "场景一：不播报恐怖故事\n场景二：不播报鬼故事",
+                "actual": "场景一、场景二：设备仍播报故事", "source_actual": source["source_actual"],
+                "review_notes": [], "suggested_bug_id": "isolated-bug", "match_reason": "两个场景与草稿问题对应。",
+                "candidate_bug_ids": [], "source_cases": [source, second]}
+
+    def test_grouped_and_legacy_payloads_preserve_sources_through_helper(self):
+        grouped = self.grouped_row()
+        # Source remarks are optional, even when the parent has a common remark.
+        del grouped["source_cases"][1]["source_actual"]
+        legacy = {key: value for key, value in grouped.items() if key != "source_cases"}
+        legacy["case_id"] = "DEMO-CA3"
+        maximum = deepcopy(grouped)
+        maximum["source_cases"] = [dict(grouped["source_cases"][0], case_id=f"DEMO-CA{index}")
+                                   for index in range(300)]
+        with self.accepting_stage_server() as (connection, received):
+            for runtime in RUNTIMES:
+                for rows in ([grouped, legacy], [maximum]):
+                    with self.subTest(runtime=runtime, rows=len(rows), sources=len(rows[0]["source_cases"])):
+                        payload = {"context_id": "grouped-script-context", "rows": rows}
+                        source_file = Path(self.temp.name) / "组合建议.json"
+                        source_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8-sig")
+                        code, result = self.invoke(runtime, connection, "stage", source_file)
+                        self.assertEqual(code, 0, result)
+                        self.assertEqual(result["summary"]["total"], len(rows))
+                        self.assertEqual(received[-1], payload)
+
+    def test_source_case_validation_stops_invalid_payloads_before_post(self):
+        original = self.grouped_row()
+        invalid = []
+        for name, value in (("empty", []), ("object", original["source_cases"][0]),
+                            ("null", None), ("too_many", [original["source_cases"][0]] * 301),
+                            ("bad_item", ["not a case"])):
+            invalid.append((name, [{**original, "source_cases": value}]))
+        for name, field, value in (("unknown", "attachment_path", "private.png"),
+                                   ("wrong_type", "steps", 123), ("nul", "case_id", "unsafe\u0000id"),
+                                   ("long_fact", "actual", "x" * 20001),
+                                   ("long_remark", "source_actual", "x" * 20001),
+                                   ("long_title", "title", "x" * 1001)):
+            row = deepcopy(original)
+            row["source_cases"][0][field] = value
+            invalid.append((name, [row]))
+        missing = deepcopy(original)
+        del missing["source_cases"][0]["case_id"]
+        invalid.append(("missing_source_field", [missing]))
+        full = {**original, "source_cases": [original["source_cases"][0]] * 300}
+        legacy = {key: value for key, value in original.items() if key != "source_cases"}
+        invalid.append(("mixed_total_over_300", [full, legacy]))
+        with self.accepting_stage_server() as (connection, received):
+            for runtime in RUNTIMES:
+                for name, rows in invalid:
+                    with self.subTest(runtime=runtime, invalid=name):
+                        source_file = Path(self.temp.name) / "非法组合建议.json"
+                        source_file.write_text(json.dumps({"context_id": "grouped-script-context", "rows": rows},
+                                                         ensure_ascii=False), encoding="utf-8")
+                        code, result = self.invoke(runtime, connection, "stage", source_file)
+                        self.assertEqual(code, 1, result)
+                        self.assertFalse(result["ok"])
+                        self.assertEqual(received, [], "Invalid source cases must never reach the stage endpoint")
 
     def test_large_real_context_and_small_stage_preserve_all_facts(self):
         evidence = Path(self.temp.name) / "isolated-demo"

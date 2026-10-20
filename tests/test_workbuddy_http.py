@@ -73,6 +73,43 @@ class WorkBuddyHTTPTests(unittest.TestCase):
             self.json('/api/workbuddy/context', headers=self.wb_headers)
         self.assertEqual(error.exception.code, 403)
 
+    def test_grouped_bug_round_trip_keeps_sources_and_rejects_client_source_rewrite(self):
+        context = self.prepare()
+        row = self.row(context)
+        fields = {'case_id', 'title', 'group', 'tester', 'date', 'preconditions', 'steps', 'expected', 'actual'}
+        first = {key: value for key, value in row.items() if key in fields}
+        second = {**first, 'case_id': 'PD10000-CA10002', 'title': '学习中打开设置',
+                  'steps': '1.播放视频\n2.打开设置', 'actual': '打开设置时视频仍播放'}
+        row.update(source_cases=[first, second], steps='1.播放视频\n2.分别唤醒管家、打开设置',
+                   actual='两种入口均未暂停视频', expected='进入两种入口时均暂停视频')
+        staged = self.json('/api/workbuddy/stage', {'context_id': context['context_id'], 'rows': [row]}, self.wb_headers)
+        pending = self.json('/api/workbuddy/status')['pending']
+        suggestion = pending['rows'][0]
+        self.assertEqual(suggestion['match_type'], 'suggested')
+        self.assertEqual([item['case_id'] for item in suggestion['source_cases']], [first['case_id'], second['case_id']])
+        self.assertEqual(suggestion['source_cases'][1]['steps'], second['steps'])
+        assignment = {'row_id': suggestion['row_id'], 'bug_id': row['suggested_bug_id'], 'mode': 'fill'}
+        before = self.json('/api/state')
+        with self.assertRaises(HTTPError) as error:
+            self.json('/api/workbuddy/apply', {'plan_id': staged['plan_id'], 'assignments': [
+                {**assignment, 'source_cases': [{'case_id': 'FORGED'}]}]})
+        self.assertEqual(error.exception.code, 400)
+        self.assertEqual(self.json('/api/state'), before)
+        self.assertEqual(self.json('/api/workbuddy/status')['pending'], pending)
+        result = self.json('/api/workbuddy/apply', {'plan_id': staged['plan_id'], 'review_scope': 'bugs',
+                                                  'assignments': [assignment]})
+        bug = next(item for item in self.json('/api/state')['bugs'] if item['id'] == row['suggested_bug_id'])
+        self.assertEqual(result['applied'], 1)
+        for field in ('preconditions', 'steps', 'actual', 'expected'):
+            self.assertEqual(bug[field], row[field])
+        self.assertEqual([item['case_id'] for item in bug['case_sources']], [first['case_id'], second['case_id']])
+        self.assertEqual(bug['case_source'], bug['case_sources'][0])
+        self.assertNotIn('source_cases', bug)
+        self.assertTrue(all(set(item) == {'case_id', 'case_title', 'group', 'tester', 'date'} for item in bug['case_sources']))
+        self.assertFalse(bug['reviewed'])
+        self.assertFalse(bug['remote_id'])
+        self.assertEqual(bug['title'], next(item['title'] for item in before['bugs'] if item['id'] == bug['id']))
+
     def test_apply_rejects_changed_draft_and_stage_respects_submission_job(self):
         context = self.prepare()
         row = self.row(context)

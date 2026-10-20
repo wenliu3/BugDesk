@@ -13,7 +13,7 @@ function element(){
   const value={textContent:'',value:'',checked:false,hidden:false,disabled:false,children:[],get childNodes(){return this.children;},dataset:{},scrollTop:0,className:'',listeners:{},attributes:{},
     setAttribute(key,item){this.attributes[key]=String(item);},addEventListener(type,callback){(this.listeners[type]||=[]).push(callback);},
     querySelectorAll(selector){const tags=selector.split(',');return this.children.flatMap(child=>[...(tags.includes(child.tagName)?[child]:[]),...child.querySelectorAll(selector)]);},querySelector(){return null;},
-    replaceChildren(...children){this.children=children;children.forEach(child=>{child.parentElement=this;});this.scrollTop=0;},append(...children){this.children.push(...children);children.forEach(child=>{child.parentElement=this;});},prepend(...children){this.children.unshift(...children);children.forEach(child=>{child.parentElement=this;});},remove(){},focus(){},select(){},scrollIntoView(){},};
+    replaceChildren(...children){this.children=children;children.forEach(child=>{child.parentElement=this;});this.scrollTop=0;},append(...children){this.children.push(...children);children.forEach(child=>{child.parentElement=this;});},prepend(...children){this.children.unshift(...children);children.forEach(child=>{child.parentElement=this;});},remove(){},focus(){},select(){},scrollIntoView(){},showModal(){this.open=true;},close(){this.open=false;(this.listeners.close||[]).forEach(callback=>callback({target:this}));},};
   value.classList={toggle(name,force){const tokens=new Set(value.className.split(/\s+/).filter(Boolean)),enabled=force===undefined?!tokens.has(name):!!force;if(enabled)tokens.add(name);else tokens.delete(name);value.className=[...tokens].join(' ');return enabled;}};
   return value;
 }
@@ -88,6 +88,13 @@ test('theme switching updates its accessible button without saving, changing rev
   assert.deepEqual(plain(h.run('({state,currentId,dirty:Array.from(dirtyBugs)})')),before);assert.equal(h.calls.length,0);assert.equal(h.requests.length,0);
 });
 function savedState(steps){return {settings:{},bugs:[{id:'a',title:'A',steps,actual:'',expected:''},{id:'b',title:'B',steps:'',actual:'',expected:''}]};}
+
+test('cancelling folder relinking keeps the current batch and never starts a scan',async()=>{
+  const h=saveHarness(),before=plain(h.run('state'));
+  h.get('folderInput').value='D:/synthetic-new-location';h.context.chooseScanRelinks=async path=>{assert.equal(path,'D:/synthetic-new-location');return null;};
+  await h.run('scanFolder()');
+  assert.deepEqual(plain(h.run('state')),before);assert.equal(h.calls.length,0);assert.equal(h.run('batchBusy'),false);
+});
 
 test('closing a tab is protected while an autosave request is in flight',async()=>{
   const h=saveHarness();
@@ -321,6 +328,110 @@ function buddyViewHarness(change=()=>{}){
   h.run('installWorkBuddy();workBuddyDialog.open=true;workBuddyPlan=original;workBuddyStatus={enabled:true,pending:original};workBuddyInitializePlan();workBuddyRenderPlan();');
   return h;
 }
+
+test('one AI-combined proposal previews every original scenario and imports as one Bug',async()=>{
+  const h=buddyViewHarness(value=>{
+    value.rows[0]={row_id:'combined',case_id:'',title:'设备卡片的两个入口文案异常',suggested_bug_id:'a',match_type:'suggested',
+      preconditions:'已绑定设备',steps:'场景一：查看直播入口\n场景二：查看回看入口',actual:'两个入口的文案均与需求不符',expected:'场景一：看直播\n场景二：看回看',
+      source_cases:[
+        {case_id:'CASE-LIVE',title:'直播入口文案',steps:'进入家居页查看直播入口',actual:'直播入口文案异常',expected:'看直播'},
+        {case_id:'CASE-REPLAY',title:'回看入口文案',steps:'进入家居页查看回看入口',actual:'回看入口文案异常',expected:'看回看'},
+      ]};
+  });
+  assert.deepEqual(plain(h.run('workBuddyAssignments.get("a")')),{rowId:'combined',checked:false});
+  assert.match(textOf(h.get('workBuddyHoverPreview')),/已合并 2 条用例/);
+  assert.match(textOf(h.get('workBuddyHoverPreview')),/场景一：查看直播入口\n场景二：查看回看入口/);
+  const originals=textOf(h.get('workBuddySourceCases'));
+  assert.match(originals,/CASE-LIVE/);assert.match(originals,/CASE-REPLAY/);
+  assert.match(originals,/进入家居页查看直播入口/);assert.match(originals,/进入家居页查看回看入口/);
+  assert.match(h.get('workBuddySummary').title,/收到 4 条用例 · 3 份整理建议/);
+  assert.match(textOf(h.get('workBuddyBugs')),/已合并 2 条用例/);
+  h.get('workBuddyCaseSearch').value='CASE-REPLAY';h.fire('workBuddyCaseSearch','input');
+  assert.deepEqual(h.get('workBuddyCaseOptions').children.map(item=>item.dataset.rowId),['combined']);
+  assert.equal(h.get('workBuddyCaseOptions').children[0].children[0].checked,true);
+  h.get('workBuddyDetailCheck').checked=true;h.fire('workBuddyDetailCheck','change');
+  h.context.api=async(route,data)=>{h.calls.push({route,data});return {state:{bugs:[]},applied:1,remaining_bugs:0,pending:null};};
+  await h.run('workBuddyApply()');
+  assert.deepEqual(plain(h.calls[0]),{route:'/api/workbuddy/apply',data:{plan_id:'view',review_scope:'bugs',assignments:[{row_id:'combined',bug_id:'a',mode:'fill'}]}});
+});
+
+test('a combined report can be found by a secondary source ID or its original query',()=>{
+  const h=buddyViewHarness(value=>{
+    value.rows[1].source_cases=[{case_id:'CASE-ONE',title:'第一条来源'},{case_id:'CASE-TWO',title:'第二条来源',steps:'query:播放指定的测试故事'}];
+  });
+  assert.deepEqual(plain(h.run('workBuddyCandidateRows(workBuddyBugs()[1],"指定的测试故事").map(row=>row.row_id)')),['r2']);
+  h.get('workBuddySearch').value='CASE-TWO';h.fire('workBuddySearch','input');
+  assert.equal(h.run('workBuddyCurrentBugId'),'b');
+  assert.deepEqual(h.get('workBuddyBugs').children.map(item=>item.dataset.bugId),['b']);
+  assert.match(textOf(h.get('workBuddySourceCases')),/CASE-TWO/);
+  assert.deepEqual(plain(h.run('workBuddyAssignments.get("b")')),{rowId:'r2',checked:false});
+});
+
+test('an existing draft clearly explains how to import a combined report with new scenarios',()=>{
+  const h=buddyViewHarness(value=>{
+    value.bugs[0].steps='只包含原来的场景';
+    value.rows[0].source_cases=[{case_id:'CASE-ONE'},{case_id:'CASE-TWO'}];
+    value.rows[0].steps='场景一：原来的操作\n场景二：新增操作';
+  });
+  assert.match(textOf(h.get('workBuddyHoverPreview')),/合并报告与已有内容不同/);
+  assert.match(textOf(h.get('workBuddyHoverPreview')),/覆盖已有内容/);
+  assert.equal(h.get('workBuddyReplace').checked,false);
+});
+
+test('saved multi-case Bugs remain searchable and show all source identities in review context',()=>{
+  const h=harness('app.js');
+  h.run('state={settings:{},bugs:[{id:"a",title:"一份已合并报告",steps:"场景一、场景二",actual:"共同现象",expected:"分别符合需求",case_source:{case_id:"CASE-ONE"},case_sources:[{case_id:"CASE-ONE",case_title:"入口一"},{case_id:"CASE-TWO",case_title:"入口二",tester:"测试人员乙"}]}]};search="case-two";');
+  assert.deepEqual(plain(h.run('shownBugs().map(bug=>bug.id)')),['a']);
+  const context=h.run('reportContext(state.bugs[0])');assert.match(textOf(context),/CASE-ONE、CASE-TWO/);
+  h.run('search="测试人员乙"');assert.equal(h.run('shownBugs().length'),1);
+  h.run('state.bugs[0].case_sources=[];search="case-one"');assert.equal(h.run('shownBugs().length'),1);
+});
+
+test('the before-after comparison follows fill and replace rules and never treats empty suggestions as deletions',()=>{
+  const h=buddyViewHarness(value=>{value.bugs[0].steps='公共操作\n旧输入';value.bugs[0].actual='人工实际结果';value.rows[0].steps='公共操作\n新输入';value.rows[0].actual='';});
+  let changes=plain(h.run('workBuddyImportChanges(workBuddyBug(),workBuddyRow())'));
+  assert.equal(changes.find(change=>change.label==='复现步骤').retained,true);
+  assert.equal(changes.find(change=>change.label==='复现步骤').after,'公共操作\n旧输入');assert.ok(!changes.some(change=>change.label==='实际结果'));
+  assert.match(textOf(h.get('workBuddyComparison')),/当前模式不写入/);
+  h.get('workBuddyReplace').checked=true;h.fire('workBuddyReplace','change');
+  changes=plain(h.run('workBuddyImportChanges(workBuddyBug(),workBuddyRow())'));
+  assert.equal(changes.find(change=>change.label==='复现步骤').after,'公共操作\n新输入');assert.equal(changes.find(change=>change.label==='复现步骤').replaces,true);
+  assert.equal(h.get('workBuddyComparison').open,true);
+  const highlights=h.get('workBuddyComparison').querySelectorAll('mark').map(textOf).join(' ');assert.match(highlights,/新输入/);assert.doesNotMatch(highlights,/公共操作/);
+  assert.match(h.get('workBuddyComparison').querySelectorAll('del').map(textOf).join(' '),/旧输入/);
+});
+
+test('overwriting reviewed Bug facts requires the complete comparison confirmation and cancellation writes nothing',async()=>{
+  const h=buddyViewHarness(value=>{value.bugs[0].steps='原草稿步骤';});
+  h.get('workBuddyReplace').checked=true;h.fire('workBuddyReplace','change');
+  let importing=h.run('workBuddyApply()');await tick();
+  assert.equal(h.calls.length,0);assert.equal(h.get('workBuddyCompareDialog').open,true);
+  assert.match(textOf(h.get('workBuddyCompareDialog')),/原草稿步骤/);assert.match(textOf(h.get('workBuddyCompareDialog')),/导入后/);
+  h.fire(byClass(h.get('workBuddyCompareDialog'),'modal-footer')[0].children[0],'click');await importing;
+  assert.equal(h.calls.length,0);assert.equal(h.run('workBuddyBusy'),false);assert.equal(h.run('workBuddyAssignments.get("a").checked'),true);
+  h.context.api=async(route,data)=>{h.calls.push({route,data});return {state:{bugs:[]},applied:1,remaining_bugs:0,pending:null,undo:{transaction_id:'tx-one',count:1,titles:['A'],available:true,reason:''}};};
+  importing=h.run('workBuddyApply()');await tick();h.fire(byClass(h.get('workBuddyCompareDialog'),'modal-footer')[0].children[1],'click');await importing;
+  assert.equal(h.calls.length,1);assert.equal(h.calls[0].data.assignments[0].mode,'replace');assert.equal(h.get('workBuddyUndo').hidden,false);assert.equal(h.get('workBuddyUndo').disabled,false);
+});
+
+test('the latest import can be undone without an active WorkBuddy connection and clears the old pending preview',async()=>{
+  const h=buddyViewHarness(),order=[];
+  h.context.record={transaction_id:'last-import',count:2,titles:['A','B'],available:true,reason:''};
+  h.run('workBuddyStatus.enabled=false;workBuddyStatus.undo=record;workBuddyRenderStatus()');
+  assert.equal(h.get('workBuddyUndo').disabled,false);
+  h.context.confirm=()=>false;await h.run('workBuddyUndoImport()');assert.equal(h.calls.length,0);
+  h.context.confirm=()=>true;h.context.flushSave=async()=>order.push('save');
+  h.context.api=async(route,data)=>{order.push('undo');h.calls.push({route,data});return {state:{bugs:[]},undone:2,pending:null,undo:null};};
+  await h.run('workBuddyUndoImport()');
+  assert.deepEqual(order,['save','undo']);assert.deepEqual(plain(h.calls[0]),{route:'/api/workbuddy/undo',data:{transaction_id:'last-import'}});
+  assert.equal(h.run('workBuddyPlan'),null);assert.equal(h.run('workBuddyAssignments.size'),0);assert.equal(h.get('workBuddyUndo').hidden,true);
+});
+
+test('a stale undo record remains disabled and cannot send a restore request',async()=>{
+  const h=buddyViewHarness();h.run('workBuddyStatus.undo={transaction_id:"old",count:1,available:false,reason:"草稿已修改"};workBuddyRenderStatus()');
+  assert.equal(h.get('workBuddyUndo').disabled,true);assert.equal(h.get('workBuddyUndo').title,'草稿已修改');
+  await h.run('workBuddyUndoImport()');assert.equal(h.calls.length,0);
+});
 
 test('clipboard failure expands the complete task before opening graphical help and selects it without changing review state',async()=>{
   const h=buddyViewHarness(),task=h.get('workBuddyTaskText'),area=h.get('workBuddyTaskArea'),search=h.get('workBuddyCaseSearch'),sheet=h.get('workBuddyHoverPreview'),options=h.get('workBuddyCaseOptions');

@@ -10,12 +10,16 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import stat
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import draft_undo
 
 
 MAX_ATTACHMENT_SIZE = 500 * 1024 * 1024
@@ -39,6 +43,10 @@ TEMP_SUFFIXES = {".tmp", ".temp", ".crdownload", ".part", ".lock"}
 CASE_FACT_FIELDS = ("preconditions", "steps", "actual", "expected")
 CASE_SOURCE_LIMITS = {"case_id": 200, "case_title": 1000, "group": 2000, "tester": 200, "date": 100}
 MAX_CASE_ROWS = 300
+SCAN_PLAN_SECONDS = 600
+MAX_SCAN_PLANS = 3
+SOURCE_CASE_LIMITS = {"case_id": 200, "title": 1000, "group": 2000, "tester": 200, "date": 100,
+                      **{field: 20000 for field in CASE_FACT_FIELDS}, "source_actual": 20000}
 
 
 def _case_source(value):
@@ -53,6 +61,38 @@ def _case_source(value):
     return cleaned
 
 
+def _case_sources(value):
+    if not isinstance(value, list) or len(value) > MAX_CASE_ROWS:
+        raise ValueError("用例来源信息需要是列表，且最多 300 条。")
+    return [_case_source(item) for item in value]
+
+
+def _restore_case_sources(bug):
+    """Migrate old provenance and keep its first-source compatibility view."""
+    source = _case_source(bug.get("case_source", {}))
+    sources = _case_sources(bug["case_sources"]) if "case_sources" in bug else ([source] if source else [])
+    bug["case_sources"] = sources
+    bug["case_source"] = copy.deepcopy(sources[0]) if sources else {}
+
+
+def _source_cases(value):
+    """Validate preview-only original facts; these are never stored with Bugs."""
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_CASE_ROWS:
+        raise ValueError("原始用例需要是列表，且包含 1 至 300 条。")
+    cleaned = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) - SOURCE_CASE_LIMITS.keys():
+            raise ValueError("原始用例含有不支持的字段。")
+        row = {}
+        for key, limit in SOURCE_CASE_LIMITS.items():
+            text = item.get(key, "")
+            if not isinstance(text, str) or len(text) > limit or "\x00" in text:
+                raise ValueError("原始用例内容过长或格式不正确。")
+            row[key] = text
+        cleaned.append(row)
+    return cleaned
+
+
 def _case_rows(rows):
     if not isinstance(rows, list) or len(rows) > MAX_CASE_ROWS:
         raise ValueError("一次最多粘贴 300 条用例。")
@@ -60,6 +100,7 @@ def _case_rows(rows):
     seen = set()
     text_limits = {**{field: 20000 for field in CASE_FACT_FIELDS}, "case_id": 200,
                    "title": 1000, "group": 2000, "tester": 200, "date": 100, "result": 200}
+    source_count = 0
     for row in cleaned:
         if not isinstance(row, dict):
             raise ValueError("粘贴的用例格式不正确。")
@@ -72,6 +113,13 @@ def _case_rows(rows):
             value = row.get(key)
             if value is not None and (not isinstance(value, str) or len(value) > limit or "\x00" in value):
                 raise ValueError("用例内容过长或格式不正确，请缩小粘贴范围。")
+        if "source_cases" in row:
+            row["source_cases"] = _source_cases(row["source_cases"])
+            source_count += len(row["source_cases"])
+        else:
+            source_count += 1
+    if source_count > MAX_CASE_ROWS:
+        raise ValueError("一次最多处理 300 条原始用例，请分批整理。")
     return cleaned
 
 
@@ -149,6 +197,7 @@ class Workbench:
         self._state_path = self.data_dir / "state.json"
         self._backup_path = self.data_dir / "state.backup.json"
         self._load_warnings = []
+        self._scan_plans = {}
         self._store = self._load()
         changed = False
         for batch in self._store["batches"].values():
@@ -201,7 +250,7 @@ class Workbench:
                 if not isinstance(bug.get("selected"), bool) or not isinstance(bug.get("reviewed"), bool):
                     raise ValueError("Bug 复核状态损坏")
                 _settings(bug.get("overrides", {}), partial=True)
-                bug["case_source"] = _case_source(bug.get("case_source", {}))
+                _restore_case_sources(bug)
                 for item in bug["attachments"]:
                     if (not isinstance(item, dict) or any(not isinstance(item.get(field), str) for field in ("id", "name", "path", "mime"))
                             or not isinstance(item.get("size"), int) or item["size"] < 0):
@@ -217,6 +266,12 @@ class Workbench:
                 raise ValueError("配置内容损坏")
             profile["settings"] = _settings(profile.get("settings", {}))
         value.setdefault("history", [])
+        journal = value.get("last_workbuddy_import")
+        value["last_workbuddy_import"] = draft_undo.validate_record(journal)
+        if journal is not None and value["last_workbuddy_import"] is None:
+            active = value["batches"].get(value.get("active_batch"))
+            if active:
+                active["warnings"].append("最近导入的撤销记录无效，已停用撤销；草稿未受影响。")
         return value
 
     def _load(self):
@@ -334,7 +389,7 @@ class Workbench:
     def _new_bug(folder):
         return {"id": _hash(_identity(folder)), "folder": str(folder), "original_title": folder.name,
                 "title": folder.name, "preconditions": "", "steps": "", "actual": "", "expected": "",
-                "case_source": {},
+                "case_source": {}, "case_sources": [],
                 "overrides": {}, "attachments": [], "excluded_attachments": [], "selected": True,
                 "reviewed": False, "status": "draft", "remote_id": None, "remote_url": "", "error": "",
                 "upload_status": {}, "updated_at": _now()}
@@ -372,29 +427,199 @@ class Workbench:
                     warnings.append(f"无法读取附件：{path}")
         return sorted(attachments, key=lambda item: _natural(item["name"]))
 
-    def scan(self, path, demo=False):
-        if not isinstance(path, str) or not path.strip():
+    @staticmethod
+    def _scan_root(path):
+        if not isinstance(path, str) or not path.strip() or "\x00" in path or len(path) > 32767:
             raise ValueError("请先选择一个日期目录。")
         root = Path(path).absolute()
+        try:
+            root_info = root.lstat()
+            if _is_link(root, root_info):
+                raise ValueError("请选择普通文件夹；链接或映射目录无法作为扫描目录。")
+            if not stat.S_ISDIR(root_info.st_mode):
+                raise ValueError("选择的路径不是文件夹。")
+            children = sorted(root.iterdir(), key=lambda item: _natural(item.name))
+        except OSError as exc:
+            raise ValueError("无法读取这个目录，请检查路径、磁盘和访问权限。") from exc
+        return root, children
+
+    @staticmethod
+    def _missing_folder(path):
+        # Permission failures and links are not proof that an old folder moved.
+        try:
+            Path(path).lstat()
+        except FileNotFoundError:
+            return True
+        except OSError:
+            pass
+        return False
+
+    @staticmethod
+    def _snapshot_token(value):
+        raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _scan_tree_token(self, root):
+        """Snapshot names and metadata without following links or changing evidence."""
+        material = []
+        pending = [root]
+        try:
+            while pending:
+                directory = pending.pop()
+                info = directory.lstat()
+                if _is_link(directory, info) or not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("目录已变化，请重新扫描并核对关联。")
+                children = sorted(directory.iterdir(), key=lambda item: _natural(item.name))
+                for path in [directory, *children]:
+                    current = path.lstat()
+                    material.append((str(path.relative_to(root)), current.st_mode, current.st_size,
+                                     current.st_mtime_ns, current.st_dev, current.st_ino))
+                    if (path != directory and stat.S_ISDIR(current.st_mode)
+                            and not _is_link(path, current) and not _is_temporary(path, current)):
+                        pending.append(path)
+        except OSError as exc:
+            raise ValueError("目录或附件无法读取，请检查后重新打开关联预览。") from exc
+        return self._snapshot_token(material)
+
+    def preview_scan(self, path):
+        """Offer missing local records for explicit reassociation; never guess ownership."""
         with self._lock:
             self._ensure_not_submitting()
-            try:
-                root_info = root.lstat()
-                if _is_link(root, root_info):
-                    raise ValueError("请选择普通文件夹；链接或映射目录无法作为扫描目录。")
-                if not stat.S_ISDIR(root_info.st_mode):
-                    raise ValueError("选择的路径不是文件夹。")
-                children = sorted(root.iterdir(), key=lambda item: _natural(item.name))
-            except OSError as exc:
-                raise ValueError("无法读取这个目录，请检查路径、磁盘和访问权限。") from exc
+            root, children = self._scan_root(path)
+            key = _hash(_identity(root))
+            batch = self._store["batches"].get(key)
+            known = {_identity(bug["folder"]) for bug in batch["bugs"]} if batch else set()
+            targets = []
+            for folder in children:
+                try:
+                    info = folder.lstat()
+                    if (_is_link(folder, info) or _is_temporary(folder, info)
+                            or not stat.S_ISDIR(info.st_mode) or _identity(folder) in known):
+                        continue
+                    targets.append({"folder_name": folder.name, "folder": str(folder)})
+                except OSError as exc:
+                    raise ValueError("Bug 目录已变化，请重新打开关联预览。") from exc
+            target_count = len(targets)
+            targets = targets[:MAX_CASE_ROWS]
+            sources = []
+            source_count = 0
+            source_batches = sorted(self._store["batches"].items(),
+                                    key=lambda item: (item[0] != key, _natural(item[1]["root_dir"]))) if targets else []
+            for source_key, source_batch in source_batches:
+                for bug in source_batch["bugs"]:
+                    if not self._missing_folder(bug["folder"]):
+                        continue
+                    source_count += 1
+                    if len(sources) >= MAX_CASE_ROWS:
+                        continue
+                    sources.append({"source_batch_key": source_key, "bug_id": bug["id"],
+                                    "title": bug["title"], "original_title": bug["original_title"],
+                                    "old_folder": bug["folder"], "source_root": source_batch["root_dir"],
+                                    "status": self._status(bug), "remote_id": bug.get("remote_id"),
+                                    "review_token": self._review_token(bug, source_batch["settings"]),
+                                    "settings_note": "保留原公共设置和本条设置；已提交记录保留原禅道编号。"})
+            sources.sort(key=lambda item: (item["source_batch_key"] != key, _natural(item["source_root"]),
+                                           _natural(item["original_title"])))
+            truncated = target_count > len(targets) or source_count > len(sources)
+            notice = (f"共 {target_count} 个新目录、{source_count} 条缺失目录的旧记录；"
+                      "本次最多显示前 300 项。未关联的新目录本次会按新 Bug 创建；"
+                      "如需全部沿用旧记录，请取消本次扫描后缩小处理范围。" if truncated else "")
+            response = {"plan_id": "", "root_dir": str(root), "batch_key": key,
+                        "targets": targets, "sources": sources, "expires_in": SCAN_PLAN_SECONDS,
+                        "target_count": target_count, "source_count": source_count,
+                        "truncated": truncated, "notice": notice,
+                        "settings_policy": "每次可关联同一个旧批次。空新批次沿用该批次公共设置；已有批次保留公共设置，迁入 Bug 使用原设置作为本条设置。"}
+            if not targets or not sources:
+                return response
+            now = time.monotonic()
+            self._scan_plans = {identifier: plan for identifier, plan in self._scan_plans.items()
+                                if now - plan["created"] < SCAN_PLAN_SECONDS}
+            while len(self._scan_plans) >= MAX_SCAN_PLANS:
+                self._scan_plans.pop(next(iter(self._scan_plans)))
+            plan_id = secrets.token_urlsafe(24)
+            self._scan_plans[plan_id] = {"created": now, "root_identity": _identity(root),
+                                         "store_token": self._snapshot_token(self._store),
+                                         "tree_token": self._scan_tree_token(root),
+                                         "targets": {item["folder_name"] for item in targets},
+                                         "sources": {(item["source_batch_key"], item["bug_id"]): item["review_token"]
+                                                     for item in sources}}
+            response["plan_id"] = plan_id
+            return response
+
+    def _validate_relinks(self, root, plan_id, relinks):
+        if not isinstance(plan_id, str):
+            raise ValueError("请先打开文件夹关联预览。")
+        plan = self._scan_plans.get(plan_id)
+        if not plan or time.monotonic() - plan["created"] >= SCAN_PLAN_SECONDS:
+            raise ValueError("文件夹关联预览已过期，请重新扫描并核对。")
+        if (plan["root_identity"] != _identity(root)
+                or plan["store_token"] != self._snapshot_token(self._store)
+                or plan["tree_token"] != self._scan_tree_token(root)):
+            raise ValueError("草稿、批次或目录已经变化，请重新打开关联预览后核对。")
+        seen_sources, seen_targets, source_batches = set(), set(), set()
+        for mapping in relinks:
+            if (not isinstance(mapping, dict)
+                    or set(mapping) != {"folder_name", "source_batch_key", "bug_id", "review_token"}
+                    or any(not isinstance(value, str) for value in mapping.values())):
+                raise ValueError("文件夹关联格式不正确，请重新选择。")
+            source = (mapping["source_batch_key"], mapping["bug_id"])
+            target = mapping["folder_name"]
+            if target not in plan["targets"] or source not in plan["sources"]:
+                raise ValueError("只能将预览中的新文件夹关联到已丢失的旧 Bug。")
+            if target in seen_targets or source in seen_sources:
+                raise ValueError("每个新文件夹和原 Bug 都只能关联一次。")
+            if mapping["review_token"] != plan["sources"][source]:
+                raise ValueError("原 Bug 的内容已变化，请重新打开关联预览。")
+            source_batch = self._store["batches"][source[0]]
+            bug = next(item for item in source_batch["bugs"] if item["id"] == source[1])
+            if not self._missing_folder(bug["folder"]):
+                raise ValueError("原文件夹仍然存在，不能作为改名或迁移关联。")
+            seen_targets.add(target)
+            seen_sources.add(source)
+            source_batches.add(source[0])
+        if len(source_batches) != 1:
+            raise ValueError("每次只能关联同一个旧批次的 Bug，请分批处理。")
+        return plan
+
+    def scan(self, path, demo=False, *, relink_plan_id=None, relinks=None):
+        if relinks is None:
+            relinks = []
+        if not isinstance(relinks, list) or len(relinks) > MAX_CASE_ROWS:
+            raise ValueError("文件夹关联需要是列表，一次最多关联 300 条 Bug。")
+        with self._lock:
+            self._ensure_not_submitting()
+            root, children = self._scan_root(path)
+            plan = self._validate_relinks(root, relink_plan_id, relinks) if relinks else None
+            replacement = copy.deepcopy(self._store)
             key = _hash(_identity(root))
             demo_root = _identity(self.data_dir / "demo")
             inferred_demo = _identity(root) == demo_root or _identity(root).startswith(demo_root + os.sep)
-            batch = self._store["batches"].get(key)
+            batch = replacement["batches"].get(key)
             if batch is None:
                 batch = {"root_dir": str(root), "batch_key": key, "scanned_at": "", "demo": bool(demo or inferred_demo),
-                         "settings": copy.deepcopy(self._store["default_settings"]), "bugs": [],
+                         "settings": copy.deepcopy(replacement["default_settings"]), "bugs": [],
                          "active_ids": [], "warnings": [], "requires_rescan": False}
+            if relinks:
+                source_key = relinks[0]["source_batch_key"]
+                source_batch = replacement["batches"][source_key]
+                if not batch["bugs"]:
+                    batch["settings"] = copy.deepcopy(source_batch["settings"])
+                for mapping in relinks:
+                    source_batch = replacement["batches"][mapping["source_batch_key"]]
+                    bug = next(item for item in source_batch["bugs"] if item["id"] == mapping["bug_id"])
+                    if source_batch is not batch and any(item["id"] == bug["id"] for item in batch["bugs"]):
+                        raise ValueError("目标批次已包含同编号 Bug，请先核对重复草稿。")
+                    if source_batch["settings"] != batch["settings"]:
+                        settings = copy.deepcopy(source_batch["settings"])
+                        settings.update(copy.deepcopy(bug.get("overrides", {})))
+                        bug["overrides"] = settings
+                    if source_batch is not batch:
+                        source_batch["bugs"].remove(bug)
+                        source_batch["active_ids"] = [item for item in source_batch["active_ids"] if item != bug["id"]]
+                        batch["bugs"].append(bug)
+                    batch["demo"] = bool(batch.get("demo") or source_batch.get("demo"))
+                    folder = root / mapping["folder_name"]
+                    bug.update(folder=str(folder), original_title=folder.name, updated_at=_now())
             # A imported or previously marked demonstration cannot be made real by rescanning.
             batch["demo"] = bool(batch.get("demo") or demo or inferred_demo)
             old_bugs = {_identity(bug["folder"]): bug for bug in batch["bugs"]}
@@ -412,6 +637,13 @@ class Workbench:
                     bug = old_bugs.get(identity)
                     if bug is None:
                         bug = self._new_bug(folder)
+                        # A formerly used path may reappear after its record moved.
+                        # Keep the moved record's stable identity unambiguous.
+                        identifiers = {item["id"] for item in batch["bugs"]}
+                        identifiers.update(item["id"] for saved in replacement["batches"].values()
+                                           for item in saved["bugs"])
+                        while bug["id"] in identifiers:
+                            bug["id"] = _hash(_identity(folder) + secrets.token_hex(16))
                         batch["bugs"].append(bug)
                     previous = {item["id"]: item for item in bug.get("attachments", [])}
                     attachments = self._attachments(folder, warnings)
@@ -438,9 +670,18 @@ class Workbench:
                 warnings.append("没有找到 Bug 子文件夹。请选日期目录，每个 Bug 使用一个子文件夹。")
             batch.update(root_dir=str(root), scanned_at=_now(), active_ids=active_ids,
                          warnings=warnings, requires_rescan=False)
-            self._store["batches"][key] = batch
-            self._store["active_batch"] = key
-            self._persist()
+            if plan and plan["tree_token"] != self._scan_tree_token(root):
+                raise ValueError("关联期间目录或附件已经变化，请重新扫描并核对。")
+            replacement["batches"][key] = batch
+            replacement["active_batch"] = key
+            original = self._store
+            self._store = replacement
+            try:
+                self._persist()
+            except BaseException:
+                self._store = original
+                raise
+            self._scan_plans.clear()
             return self.state()
 
     @staticmethod
@@ -473,9 +714,11 @@ class Workbench:
                     token = re.compile(r"(?<![A-Za-z0-9])" + re.escape(case_id) + r"(?![A-Za-z0-9])")
                     matches = []
                     for bug in candidates:
-                        remembered = bug.get("case_source", {}).get("case_id", "").strip()
+                        sources = bug.get("case_sources", [bug.get("case_source", {})])
+                        remembered = {source.get("case_id", "").strip() for source in sources
+                                      if source.get("case_id", "").strip()}
                         if remembered:
-                            if remembered == case_id:
+                            if case_id in remembered:
                                 matches.append((bug, "按已关联的用例 ID 匹配。"))
                         elif any(token.search(bug.get(field, "")) for field in ("original_title", "title")):
                             matches.append((bug, "按 Bug 标题中的完整用例 ID 匹配。"))
@@ -488,7 +731,7 @@ class Workbench:
                         row["match_reason"] = "没有匹配到完整用例 ID，请手动关联 Bug。"
             return cleaned
 
-    def apply_cases(self, rows, assignments, *, batch_key):
+    def apply_cases(self, rows, assignments, *, batch_key, record_undo=False):
         """Apply explicitly reviewed testcase facts, without changing evidence or titles."""
         cleaned = _case_rows(rows)
         if not isinstance(assignments, list) or not assignments or len(assignments) > MAX_CASE_ROWS:
@@ -506,6 +749,7 @@ class Workbench:
             bugs = {bug["id"]: bug for bug in edited_batch["bugs"] if bug["id"] in active}
             seen = set()
             applied = unchanged = skipped_fields = 0
+            changed_ids = []
             for assignment in assignments:
                 if not isinstance(assignment, dict):
                     raise ValueError("用例关联格式不正确。")
@@ -526,6 +770,10 @@ class Workbench:
                 if not isinstance(mode, str) or mode not in {"fill", "replace"}:
                     raise ValueError("请选择仅补空白或替换描述。")
                 row = indexed_rows[row_id]
+                if (mode == "fill" and len(row.get("source_cases", [])) > 1
+                        and any(row.get(field) and row[field].strip() and bug.get(field, "").strip()
+                                and row[field] != bug[field] for field in CASE_FACT_FIELDS)):
+                    raise ValueError("合并报告与已有内容不同，请核对后勾选“覆盖已有内容”再导入。")
                 changed = False
                 for field in CASE_FACT_FIELDS:
                     value = row.get(field)
@@ -539,11 +787,12 @@ class Workbench:
                     if value != current:
                         bug[field] = value
                         changed = True
-                source = _case_source({"case_id": row.get("case_id") or "", "case_title": row.get("title") or "",
-                                       "group": row.get("group") or "", "tester": row.get("tester") or "",
-                                       "date": row.get("date") or ""})
-                if source != bug.get("case_source", {}):
-                    bug["case_source"] = source
+                sources = [_case_source({"case_id": item.get("case_id") or "", "case_title": item.get("title") or "",
+                                         "group": item.get("group") or "", "tester": item.get("tester") or "",
+                                         "date": item.get("date") or ""}) for item in row.get("source_cases", [row])]
+                if sources != bug.get("case_sources", []) or sources[0] != bug.get("case_source", {}):
+                    bug["case_sources"] = sources
+                    bug["case_source"] = copy.deepcopy(sources[0])
                     changed = True
                 if changed:
                     bug["reviewed"] = False
@@ -551,9 +800,12 @@ class Workbench:
                     # testcase facts cannot rewrite a submission record.
                     bug["updated_at"] = _now()
                     applied += 1
+                    changed_ids.append(bug_id)
                 else:
                     unchanged += 1
             if applied:
+                if record_undo:
+                    draft_undo.record_import(self, replacement, batch_key, changed_ids)
                 original = self._store
                 self._store = replacement
                 try:
@@ -563,6 +815,12 @@ class Workbench:
                     raise
             return {"state": self.state(), "applied": applied, "unchanged": unchanged,
                     "skipped_fields": skipped_fields}
+
+    def undo_status(self):
+        return draft_undo.undo_status(self)
+
+    def undo_last_import(self, transaction_id):
+        return draft_undo.undo_last_import(self, transaction_id)
 
     def save(self, payload):
         if not isinstance(payload, dict):
@@ -699,6 +957,7 @@ class Workbench:
         attachments.sort(key=lambda item: (item["id"], item["name"]))
         material = {"id": bug["id"], "settings": settings, "attachments": attachments}
         material["case_source"] = copy.deepcopy(bug.get("case_source", {}))
+        material["case_sources"] = copy.deepcopy(bug.get("case_sources", []))
         material.update({field: effective_bug.get(field, "") for field in TEXT_FIELDS})
         encoded = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -983,6 +1242,8 @@ class Workbench:
             else:
                 batch["settings"] = _settings(source.get("settings", {}))
             existing = {_identity(bug["folder"]): bug for bug in batch["bugs"]}
+            stored_ids = {bug["id"]: _identity(bug["folder"])
+                          for stored in self._store["batches"].values() for bug in stored["bugs"]}
             active = []
             seen = set()
             for item in source_bugs:
@@ -998,6 +1259,20 @@ class Workbench:
                     raise ValueError("备份包含重复的 Bug 文件夹。")
                 seen.add(identity)
                 bug = self._new_bug(folder)
+                known = existing.get(identity)
+                incoming_id = item.get("id")
+                if known:
+                    bug["id"] = known["id"]
+                elif isinstance(incoming_id, str) and re.fullmatch(r"[0-9a-f]{24}", incoming_id):
+                    if incoming_id in stored_ids and stored_ids[incoming_id] != identity:
+                        raise ValueError("备份中的 Bug 已在其他目录关联，不能重复恢复为另一条 Bug。请使用最新备份。")
+                    bug["id"] = incoming_id
+                else:
+                    while bug["id"] in stored_ids and stored_ids[bug["id"]] != identity:
+                        bug["id"] = _hash(identity + secrets.token_hex(16))
+                if bug["id"] in active:
+                    raise ValueError("备份包含重复的 Bug 编号。")
+                stored_ids[bug["id"]] = identity
                 for field in TEXT_FIELDS:
                     text = item.get(field, "")
                     if not isinstance(text, str) or len(text) > 100000:
@@ -1005,6 +1280,11 @@ class Workbench:
                     bug[field] = text
                 bug["overrides"] = _settings(item.get("overrides", {}), partial=True)
                 bug["case_source"] = _case_source(item.get("case_source", {}))
+                if "case_sources" in item:
+                    bug["case_sources"] = _case_sources(item["case_sources"])
+                else:
+                    bug.pop("case_sources", None)
+                _restore_case_sources(bug)
                 bug["selected"] = item.get("selected", True) is not False
                 exclusions = item.get("excluded_attachments", [])
                 if not isinstance(exclusions, list) or any(not isinstance(entry, str) for entry in exclusions):
@@ -1024,9 +1304,8 @@ class Workbench:
                 if isinstance(item.get("upload_status"), dict):
                     bug["upload_status"] = copy.deepcopy(item["upload_status"])
                 # Never downgrade a locally known submission by importing an old draft.
-                known = existing.get(identity)
                 if known and (known.get("remote_id") or known.get("status") in TERMINAL_STATUSES):
-                    for field in ("status", "remote_id", "remote_url", "error", "upload_status", "case_source"):
+                    for field in ("status", "remote_id", "remote_url", "error", "upload_status", "case_source", "case_sources"):
                         bug[field] = copy.deepcopy(known.get(field))
                 existing[identity] = bug
                 active.append(bug["id"])
@@ -1039,6 +1318,7 @@ class Workbench:
                 self._store["default_settings"] = copy.deepcopy(batch["settings"])
             self._store["profiles"] = imported_profiles
             self._store["history"] = imported_history[-2000:]
+            self._store.pop("last_workbuddy_import", None)
             if source.get("active_profile") in {item["id"] for item in imported_profiles}:
                 self._store["active_profile"] = source["active_profile"]
             self._persist()

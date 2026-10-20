@@ -285,10 +285,142 @@ class CaseImportTests(unittest.TestCase):
         for batch in raw["batches"].values():
             for bug in batch["bugs"]:
                 bug.pop("case_source", None)
+                bug.pop("case_sources", None)
         self.workbench._state_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
         legacy = Workbench(self.base / "data")
         self.assertEqual(len(legacy.state()["bugs"]), 3)
         self.assertTrue(all(item["case_source"] == {} for item in legacy.state()["bugs"]))
+
+    def grouped_row(self, **changes):
+        fields = {"case_id", "title", "group", "tester", "date", "preconditions", "steps", "expected", "actual"}
+        first = {key: value for key, value in self.row().items() if key in fields}
+        second = {**first, "case_id": "PD10000-CA20002", "steps": "另一触发方式", "actual": "另一条原始记录"}
+        return self.row(source_cases=[first, second], **changes)
+
+    def test_multiple_sources_survive_restart_rescan_backup_and_exact_matching(self):
+        row = self.grouped_row(steps="整理后的完整步骤", actual="多个触发方式均出现问题")
+        self.apply([row])
+        expected = self.bug()["case_sources"]
+        self.assertEqual(len(expected), 2)
+        self.workbench = Workbench(self.base / "data")
+        self.workbench.scan(str(self.root))
+        self.assertEqual(self.bug()["case_sources"], expected)
+        for source in expected:
+            linked = self.workbench.preview_case_links([self.row(case_id=source["case_id"])])[0]
+            self.assertEqual(linked["suggested_bug_id"], self.bug()["id"])
+        self.assertEqual(self.workbench.preview_case_links([self.row(case_id="PD10000-CA2000")])[0]["suggested_bug_id"], "")
+        backup = json.loads(Path(self.workbench.export("json")).read_text(encoding="utf-8"))
+        restored = Workbench(self.base / "restored")
+        restored.import_backup(backup)
+        restored.scan(str(self.root))
+        bug = next(item for item in restored.state()["bugs"] if item["id"] == self.bug()["id"])
+        self.assertEqual(bug["case_sources"], expected)
+        self.assertEqual(bug["case_source"], expected[0])
+        stored = json.loads(restored._state_path.read_text(encoding="utf-8"))
+        self.assertNotIn("另一条原始记录", json.dumps(stored, ensure_ascii=False))
+
+    def test_grouped_fill_conflict_requires_replace_before_linking_new_sources(self):
+        self.apply([self.row()])
+        self.review()
+        before = self.workbench.state()
+        stored = self.workbench._state_path.read_bytes()
+        row = self.grouped_row(steps="1.分别执行 A、B 两种操作", actual="A、B 均出现同一问题")
+        with patch.object(self.workbench, "_persist") as persist:
+            with self.assertRaisesRegex(ValueError, "合并报告与已有内容不同.*覆盖已有内容"):
+                self.apply([row])
+        persist.assert_not_called()
+        self.assertEqual(self.workbench.state(), before)
+        self.assertEqual(self.workbench._state_path.read_bytes(), stored)
+        result = self.apply([row], [self.assignment(row, mode="replace")])
+        self.assertEqual(result["applied"], 1)
+        self.assertEqual(self.bug()["steps"], row["steps"])
+        self.assertEqual(self.bug()["actual"], row["actual"])
+        self.assertEqual(len(self.bug()["case_sources"]), 2)
+        self.assertFalse(self.bug()["reviewed"])
+        self.review()
+        before = self.workbench.state()
+        with patch.object(self.workbench, "_persist") as persist:
+            repeated = self.apply([row])
+        persist.assert_not_called()
+        self.assertEqual(repeated["unchanged"], 1)
+        self.assertEqual(repeated["applied"], 0)
+        self.assertEqual(self.workbench.state(), before)
+
+    def test_grouped_fill_can_complete_blank_facts_with_matching_existing_facts(self):
+        self.apply([self.row(actual="")])
+        row = self.grouped_row(actual="A、B 均出现同一问题")
+        result = self.apply([row])
+        self.assertEqual(result["applied"], 1)
+        self.assertEqual(self.bug()["actual"], row["actual"])
+        self.assertEqual(self.bug()["steps"], row["steps"])
+        self.assertEqual(len(self.bug()["case_sources"]), 2)
+
+    def test_late_grouped_fill_conflict_rejects_other_bug_changes_atomically(self):
+        self.apply([self.row()])
+        row = self.grouped_row(steps="合并 A、B 的完整步骤")
+        blank = self.bug("全程语音控制")
+        before = self.workbench.state()
+        stored = self.workbench._state_path.read_bytes()
+        assignments = [self.assignment(row, blank), self.assignment(row)]
+        with patch.object(self.workbench, "_persist") as persist:
+            with self.assertRaisesRegex(ValueError, "合并报告与已有内容不同"):
+                self.apply([row], assignments)
+        persist.assert_not_called()
+        self.assertEqual(self.workbench.state(), before)
+        self.assertEqual(self.workbench._state_path.read_bytes(), stored)
+
+    def test_changing_only_nonfirst_source_invalidates_review_and_legacy_apply_clears_it(self):
+        row = self.grouped_row()
+        self.apply([row])
+        self.review()
+        before = self.bug()
+        row["source_cases"][1]["tester"] = "另一测试人员"
+        self.apply([row])
+        self.assertEqual(self.bug()["case_source"], before["case_source"])
+        self.assertNotEqual(self.bug()["review_token"], before["review_token"])
+        self.assertFalse(self.bug()["reviewed"])
+        self.apply([self.row()])
+        self.assertEqual(self.bug()["case_sources"], [self.bug()["case_source"]])
+        self.assertEqual(self.workbench.preview_case_links([self.row(case_id="PD10000-CA20002")])[0]["suggested_bug_id"], "")
+
+    def test_legacy_source_migrates_and_invalid_multiple_source_backups_are_atomic(self):
+        self.apply([self.row()])
+        payload = {"version": 1, "root_dir": str(self.root), "bugs": [self.bug()]}
+        payload["bugs"][0].pop("case_sources")
+        restored = Workbench(self.base / "restored")
+        migrated = restored.import_backup(payload)["bugs"][0]
+        self.assertEqual(migrated["case_sources"], [migrated["case_source"]])
+        raw = json.loads(self.workbench._state_path.read_text(encoding="utf-8"))
+        for batch in raw["batches"].values():
+            for bug in batch["bugs"]:
+                bug.pop("case_sources", None)
+        decoded = Workbench._decode(json.dumps(raw))
+        decoded_bug = next(bug for batch in decoded["batches"].values() for bug in batch["bugs"] if bug["id"] == self.bug()["id"])
+        self.assertEqual(decoded_bug["case_sources"], [decoded_bug["case_source"]])
+        invalid = [None, {}, [None], [{"steps": "must stay preview-only"}], [{"case_id": 3}],
+                   [{"case_title": "x" * 1001}], [{}] * 301]
+        before = self.workbench.state()
+        for value in invalid:
+            bad = copy.deepcopy(payload)
+            bad["bugs"][0]["case_sources"] = value
+            with self.subTest(value=str(value)[:80]), self.assertRaisesRegex(ValueError, "用例来源"):
+                self.workbench.import_backup(bad)
+            self.assertEqual(self.workbench.state(), before)
+            damaged = copy.deepcopy(raw)
+            next(iter(damaged["batches"].values()))["bugs"][0]["case_sources"] = value
+            with self.assertRaisesRegex(ValueError, "用例来源"):
+                Workbench._decode(json.dumps(damaged))
+
+    def test_submitted_multiple_sources_survive_old_backup_and_save_cannot_forge_them(self):
+        old = {"state": self.workbench.state()}
+        self.apply([self.grouped_row()])
+        sources = self.bug()["case_sources"]
+        self.workbench.save({"bugs": [{"id": self.bug()["id"], "case_sources": [{"case_id": "FORGED"}]}]})
+        self.assertEqual(self.bug()["case_sources"], sources)
+        self.workbench.set_submission(self.bug()["id"], status="submitted", remote_id=8800)
+        self.workbench.import_backup(old)
+        self.assertEqual(self.bug()["case_sources"], sources)
+        self.assertEqual(self.bug()["case_source"], sources[0])
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from case_clipboard import parse_cases
 from workbuddy import WorkBuddyBridge
 from zentao import ZenTaoClient, ConnectorError
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 ASSET_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "web"
 
 
@@ -430,7 +430,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not export_path:
                     raise ValueError("导出链接已失效，请重新导出。")
                 return self._file(Path(export_path), download=True)
-            assets = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/app.js": "app.js", "/case_import.js": "case_import.js", "/workbuddy.js": "workbuddy.js", "/workbuddy_help.js": "workbuddy_help.js", "/workbuddy_help.css": "workbuddy_help.css"}
+            assets = {"/": "index.html", "/index.html": "index.html", "/app.css": "app.css", "/app.js": "app.js", "/case_import.js": "case_import.js", "/workbuddy.js": "workbuddy.js", "/workbuddy_help.js": "workbuddy_help.js", "/workbuddy_help.css": "workbuddy_help.css", "/relink.js": "relink.js", "/relink.css": "relink.css"}
             assets['/help/workbuddy-3-workbuddy.png'] = 'help/workbuddy-3-workbuddy.png'
             for step in range(1, 5):
                 name = f'help/workbuddy-{step}-' + ('scan', 'send', 'preview', 'import')[step - 1] + '.jpg'
@@ -505,11 +505,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("请求格式不正确。")
             path = urlparse(self.path).path
             app = self.application
+            if path == "/api/scan/preview":
+                with app.job_lock:
+                    app.ensure_idle()
+                    return self._json(app.workbench.preview_scan(data.get("path", "")))
             if path in ("/api/scan", "/api/demo", "/api/save", "/api/import"):
                 with app.job_lock:
                     app.ensure_idle()
                     if path == "/api/scan":
-                        app.workbench.scan(str(data.get("path", "")))
+                        app.workbench.scan(data.get("path", ""), relink_plan_id=data.get("relink_plan_id"),
+                                           relinks=data.get("relinks"))
                     elif path == "/api/demo":
                         app.workbench.create_demo()
                     elif path == "/api/save":
@@ -561,6 +566,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(app.workbuddy.stage(data, self.headers.get("X-BugDesk-WorkBuddy-Token", "")))
             if path == "/api/workbuddy/apply":
                 return self._json(app.workbuddy.apply(data))
+            if path == "/api/workbuddy/undo":
+                return self._json(app.workbuddy.undo(data))
             if path == "/api/submit":
                 return self._json(app.start_submit(data))
             if path == "/api/resolve-submission":

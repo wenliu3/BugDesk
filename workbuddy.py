@@ -10,6 +10,8 @@ import secrets
 import time
 from datetime import datetime, timezone
 
+from domain import _source_cases
+
 
 SESSION_SECONDS = 60 * 60
 MAX_ROWS = 300
@@ -23,8 +25,9 @@ FIELD_LABELS = {"case_id": "用例 ID", "title": "用例名称", "group": "用�
                 "expected": "预期结果", "actual": "实际结果"}
 ROW_FIELDS = set(METADATA_LIMITS) | set(FACT_FIELDS) | {
     "suggested_bug_id", "match_reason", "candidate_bug_ids", "source_actual", "review_notes",
+    "source_cases",
 }
-BUG_FIELDS = ("id", "title", "original_title", "case_source", "review_token",
+BUG_FIELDS = ("id", "title", "original_title", "case_source", "case_sources", "review_token",
               "preconditions", "steps", "expected", "actual")
 
 
@@ -151,7 +154,7 @@ class WorkBuddyBridge:
         return {"enabled": bool(self._token),
                 "connection_file": str(self.connection_file) if self._token else "",
                 "expires_at": _timestamp(self._expires) if self._token else "",
-                "pending": pending}
+                "pending": pending, "undo": self.app.workbench.undo_status()}
 
     def status(self, known_plan_id=None):
         with self.app.job_lock:
@@ -181,6 +184,7 @@ class WorkBuddyBridge:
     @staticmethod
     def _public_bug(bug):
         value = {key: copy.deepcopy(bug.get(key, {} if key == "case_source" else "")) for key in BUG_FIELDS}
+        value["case_sources"] = copy.deepcopy(bug.get("case_sources", [bug["case_source"]] if bug.get("case_source") else []))
         excluded = set(bug.get("excluded_attachments", []))
         value["attachments"] = [{"name": item["name"]} for item in bug.get("attachments", [])
                                 if item.get("id") not in excluded]
@@ -239,12 +243,20 @@ class WorkBuddyBridge:
                 raise ValueError("一次最多暂存 300 条用例，请分批整理。")
             allowed_ids = {bug["id"] for bug in snapshot["public"]["bugs"]}
             rows = []
+            source_count = 0
             for index, item in enumerate(source, start=1):
                 if not isinstance(item, dict) or set(item) - ROW_FIELDS:
                     raise ValueError("用例中含有不支持的字段，请仅提交四项事实和关联建议。")
                 row = {key: _text(item.get(key, ""), FIELD_LABELS[key], limit) for key, limit in METADATA_LIMITS.items()}
                 row.update({key: _text(item.get(key, ""), FIELD_LABELS[key], 20000) for key in FACT_FIELDS})
                 row["source_actual"] = _text(item.get("source_actual", ""), "原始失败备注", 20000)
+                if "source_cases" in item:
+                    row["source_cases"] = _source_cases(item["source_cases"])
+                    source_count += len(row["source_cases"])
+                else:
+                    source_count += 1
+                if source_count > MAX_ROWS:
+                    raise ValueError("一次最多暂存 300 条原始用例，请分批整理。")
                 notes = item.get("review_notes", [])
                 if not isinstance(notes, list) or len(notes) > 20:
                     raise ValueError("待确认事项需要是列表，且最多 20 条。")
@@ -264,10 +276,20 @@ class WorkBuddyBridge:
                                                            sort_keys=True).encode("utf-8")).hexdigest()[:24]
                 rows.append(row)
             original = {row["row_id"]: row for row in rows}
-            linked = self.app.workbench.preview_case_links(rows)
+            matching_rows = copy.deepcopy(rows)
+            for row in matching_rows:
+                if "source_cases" in row:
+                    # A representative ID must not turn an AI grouping into an
+                    # exact link. Single-source groups can use their real ID.
+                    row["case_id"] = row["source_cases"][0]["case_id"] if len(row["source_cases"]) == 1 else ""
+            linked = self.app.workbench.preview_case_links(matching_rows)
             summary = {"total": len(linked), "exact": 0, "suggested": 0, "unmatched": 0}
             for row in linked:
                 proposal = original[row["row_id"]]
+                row["case_id"] = proposal["case_id"]
+                for key in ("source_cases", "source_actual", "review_notes"):
+                    if key in proposal:
+                        row[key] = copy.deepcopy(proposal[key])
                 if row["suggested_bug_id"]:
                     row["match_type"] = "exact_id"
                     row["candidate_bug_ids"] = [row["suggested_bug_id"]]
@@ -328,7 +350,7 @@ class WorkBuddyBridge:
                 assignments.append({"row_id": row_id, "bug_id": bug_id, "mode": mode,
                                     "review_token": bugs[bug_id]["review_token"]})
             result = self.app.workbench.apply_cases(self._pending["rows"], assignments,
-                                                    batch_key=self._pending["batch_key"])
+                                                    batch_key=self._pending["batch_key"], record_undo=True)
             if review_scope == "bugs":
                 return self._finish_bug_review_locked(result, assignments, completed_bug_ids)
             consumed = {assignment["row_id"] for assignment in assignments}
@@ -350,7 +372,21 @@ class WorkBuddyBridge:
             # Draft content changed; retire every pre-write context snapshot.
             self._contexts.clear()
             return {**result, "state": self.app.state(), "remaining": len(remaining),
-                    "pending": copy.deepcopy(self._pending)}
+                    "pending": copy.deepcopy(self._pending), "undo": self.app.workbench.undo_status()}
+
+    def undo(self, data):
+        """UI-only undo also works after a restart or an expired AI connection."""
+        with self.app.job_lock:
+            self.app.ensure_idle()
+            if not isinstance(data, dict) or set(data) != {"transaction_id"}:
+                raise ValueError("撤销导入格式不正确，请刷新后再确认。")
+            result = self.app.workbench.undo_last_import(data["transaction_id"])
+            # Retire every pre-undo plan and capability snapshot so an old
+            # suggestion cannot silently reapply the reverted facts.  The
+            # current local connection remains available for a fresh context.
+            self._pending = None
+            self._contexts.clear()
+            return {**result, "state": self.app.state(), "pending": None}
 
     def _finish_bug_review_locked(self, result, assignments, completed_bug_ids):
         """Complete reviewed Bugs while retaining the shared source-case pool."""
@@ -383,4 +419,5 @@ class WorkBuddyBridge:
         self._contexts.clear()
         return {**result, "state": self.app.state(), "remaining": len(bugs),
                 "remaining_bugs": len(bugs), "remaining_cases": len(rows), "total_bugs": total_bugs,
-                "completed_bug_ids": completed_bug_ids, "pending": copy.deepcopy(self._pending)}
+                "completed_bug_ids": completed_bug_ids, "pending": copy.deepcopy(self._pending),
+                "undo": self.app.workbench.undo_status()}

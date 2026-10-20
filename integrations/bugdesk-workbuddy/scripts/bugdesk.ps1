@@ -222,9 +222,32 @@ try {
         $limits = @{ case_id = 200; title = 1000; group = 2000; tester = 200; date = 100;
                      preconditions = 20000; steps = 20000; expected = 20000; actual = 20000;
                      suggested_bug_id = 200; match_reason = 1000 }
+        $sourceLimits = @{ case_id = 200; title = 1000; group = 2000; tester = 200; date = 100;
+                           preconditions = 20000; steps = 20000; expected = 20000; actual = 20000 }
+        $sourceCaseCount = 0
         foreach ($row in $inputObject.rows) {
-            Assert-ObjectKeys $row @($limits.Keys) @('candidate_bug_ids', 'source_actual', 'review_notes')
+            Assert-ObjectKeys $row @($limits.Keys) @('candidate_bug_ids', 'source_actual', 'review_notes', 'source_cases')
             foreach ($field in $limits.Keys) { Assert-Text $row.$field $limits[$field] }
+            if (@($row.PSObject.Properties.Name) -ccontains 'source_cases') {
+                if ($row.source_cases -isnot [array] -or $row.source_cases.Count -lt 1 -or $row.source_cases.Count -gt 300) {
+                    Stop-Safely '来源用例需要是包含 1 到 300 条的列表。'
+                }
+                foreach ($sourceCase in $row.source_cases) {
+                    Assert-ObjectKeys $sourceCase @($sourceLimits.Keys) @('source_actual')
+                    foreach ($field in $sourceLimits.Keys) { Assert-Text $sourceCase.$field $sourceLimits[$field] }
+                    if (@($sourceCase.PSObject.Properties.Name) -ccontains 'source_actual') {
+                        Assert-Text $sourceCase.source_actual 20000
+                    }
+                }
+                $sourceCaseCount += $row.source_cases.Count
+            }
+            else {
+                # Legacy 1.0.0 rows contain one original case directly.
+                $sourceCaseCount += 1
+            }
+            if ($sourceCaseCount -gt 300) {
+                Stop-Safely '一次最多整理 300 条来源用例，请分批整理。'
+            }
             if (@($row.PSObject.Properties.Name) -ccontains 'source_actual') {
                 Assert-Text $row.source_actual 20000
             }

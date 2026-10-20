@@ -71,6 +71,10 @@ class WorkBuddyTests(unittest.TestCase):
     def pending(self):
         return self.bridge.status()["pending"]
 
+    def source_case(self, **changes):
+        row = self.row(**changes)
+        return {key: value for key, value in row.items() if key != "match_reason"}
+
     def apply(self, pending=None, assignments=None, review_scope=None):
         pending = pending or self.pending()
         assignments = assignments or [{"row_id": pending["rows"][0]["row_id"],
@@ -271,6 +275,149 @@ class WorkBuddyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "1 MB"):
             self.stage(huge_rows, context)
         self.assertEqual(self.pending(), before)
+
+    def test_grouped_suggestion_keeps_original_facts_and_applies_only_ai_body(self):
+        context = self.context()
+        target = next(bug for bug in context["bugs"] if not bug["original_title"].startswith("PD10000"))
+        sources = [self.source_case(source_actual="原始失败备注", steps="query：讲个故事"),
+                   self.source_case(case_id="PD10000-CA20002", steps="query：讲个笑话", actual="第二条原始现象")]
+        merged = self.row(source_cases=sources, suggested_bug_id=target["id"],
+                          steps="1.分别请求故事和笑话\n2.观察响应", actual="两类请求均出现同一问题")
+        before = self.app.workbench.state()
+        self.stage([merged], context)
+        pending = self.pending()
+        row = pending["rows"][0]
+        self.assertEqual(row["source_cases"], [{**source, "source_actual": source.get("source_actual", "")} for source in sources])
+        self.assertEqual(row["match_type"], "suggested")
+        self.assertEqual(row["suggested_bug_id"], target["id"])
+        self.assertEqual(self.app.workbench.state(), before)
+        self.apply(pending, review_scope="bugs")
+        bug = self.app.workbench.get_bug(target["id"])
+        for field in ("preconditions", "steps", "expected", "actual"):
+            self.assertEqual(bug[field], merged[field])
+        self.assertEqual([source["case_id"] for source in bug["case_sources"]], [source["case_id"] for source in sources])
+        self.assertEqual(bug["case_source"], bug["case_sources"][0])
+        self.assertTrue(all(set(source) == {"case_id", "case_title", "group", "tester", "date"}
+                            for source in bug["case_sources"]))
+        self.assertNotIn("source_cases", bug)
+        self.assertNotIn("source_actual", bug)
+        public = next(item for item in self.context()["bugs"] if item["id"] == target["id"])
+        self.assertEqual(public["case_sources"], bug["case_sources"])
+        public["case_sources"].clear()
+        self.assertEqual(len(self.app.workbench.get_bug(target["id"])["case_sources"]), 2)
+
+    def test_group_cannot_claim_exact_match_from_a_representative_id(self):
+        self.stage([self.row(source_cases=[self.source_case(), self.source_case(case_id="OTHER-ID")])])
+        row = self.pending()["rows"][0]
+        self.assertEqual(row["match_type"], "unmatched")
+        self.assertEqual(row["suggested_bug_id"], "")
+        self.stage([self.row(case_id="UNRELATED-REPRESENTATIVE", source_cases=[self.source_case()])])
+        row = self.pending()["rows"][0]
+        self.assertEqual(row["match_type"], "exact_id")
+        self.assertEqual(row["case_id"], "UNRELATED-REPRESENTATIVE")
+        self.assertTrue(row["suggested_bug_id"])
+
+    def test_expanding_existing_bug_requires_replace_and_failed_fill_keeps_pending(self):
+        self.stage()
+        target = self.pending()["rows"][0]["suggested_bug_id"]
+        self.apply()
+        context = self.context()
+        merged = self.row(source_cases=[self.source_case(), self.source_case(case_id="SECOND-ID")],
+                          suggested_bug_id=target, steps="1.分别执行两种操作\n2.检查同一异常",
+                          actual="两个场景均出现同一异常")
+        self.stage([merged], context)
+        pending = self.pending()
+        before = self.app.workbench.state()
+        stored = self.app.workbench._state_path.read_bytes()
+        assignment = {"row_id": pending["rows"][0]["row_id"], "bug_id": target}
+        with self.assertRaisesRegex(ValueError, "合并报告与已有内容不同.*覆盖已有内容"):
+            self.apply(pending, [assignment], review_scope="bugs")
+        self.assertEqual(self.app.workbench.state(), before)
+        self.assertEqual(self.app.workbench._state_path.read_bytes(), stored)
+        self.assertEqual(self.pending(), pending)
+        result = self.apply(pending, [{**assignment, "mode": "replace"}], review_scope="bugs")
+        bug = self.app.workbench.get_bug(target)
+        self.assertEqual(bug["steps"], merged["steps"])
+        self.assertEqual(bug["actual"], merged["actual"])
+        self.assertEqual(len(bug["case_sources"]), 2)
+        self.assertIn(target, result["completed_bug_ids"])
+        self.assertNotIn(target, [item["id"] for item in result["pending"]["bugs"]])
+
+    def test_multi_bug_apply_keeps_whole_plan_when_a_later_group_conflicts(self):
+        self.stage()
+        existing = self.pending()["rows"][0]["suggested_bug_id"]
+        self.apply()
+        context = self.context()
+        blank = next(bug["id"] for bug in context["bugs"] if bug["id"] != existing)
+        merged = self.row(source_cases=[self.source_case(), self.source_case(case_id="SECOND-ID")],
+                          suggested_bug_id=existing, steps="合并后的两个场景步骤")
+        self.stage([merged], context)
+        pending = self.pending()
+        assignments = [{"row_id": pending["rows"][0]["row_id"], "bug_id": bug_id} for bug_id in (blank, existing)]
+        before = self.app.workbench.state()
+        with self.assertRaisesRegex(ValueError, "合并报告与已有内容不同"):
+            self.apply(pending, assignments, review_scope="bugs")
+        self.assertEqual(self.app.workbench.state(), before)
+        self.assertEqual(self.pending(), pending)
+
+    def test_source_cases_are_strictly_bounded_and_invalid_stage_preserves_plan(self):
+        context = self.context()
+        self.stage(context=context)
+        before = self.pending()
+        invalid = [None, {}, [], [None], [self.source_case(reviewed=True)], [self.source_case(case_id=2)],
+                   [self.source_case(title="x" * 1001)], [self.source_case(steps="x" * 20001)],
+                   [self.source_case(source_actual="x\x00")], [{}] * 301]
+        for sources in invalid:
+            with self.subTest(sources=str(sources)[:80]), self.assertRaises(ValueError):
+                self.stage([self.row(source_cases=sources)], context)
+            self.assertEqual(self.pending(), before)
+        with self.assertRaisesRegex(ValueError, "300 条原始用例"):
+            self.stage([self.row(source_cases=[{}] * 300), self.row(case_id="LEGACY-ROW")], context)
+        self.assertEqual(self.pending(), before)
+        self.stage([self.row(source_cases=[{}] * 299), self.row(case_id="LEGACY-ROW")], context)
+        self.assertEqual(len(self.pending()["rows"][0]["source_cases"]), 299)
+        huge_sources = [self.source_case(steps="中文" * 10000) for _ in range(20)]
+        with self.assertRaisesRegex(ValueError, "1 MB"):
+            self.stage([self.row(source_cases=huge_sources)], context)
+
+    def test_staged_source_cases_survive_link_projection_and_partial_apply(self):
+        context = self.context()
+        target = context["bugs"][0]["id"]
+        sources = [self.source_case(), self.source_case(case_id="SECOND-ID", steps="第二条步骤")]
+        preview = self.app.workbench.preview_case_links
+
+        def projected(rows):
+            linked = preview(rows)
+            for row in linked:
+                for key in ("source_cases", "source_actual", "review_notes"):
+                    row.pop(key, None)
+            return linked
+
+        with patch.object(self.app.workbench, "preview_case_links", side_effect=projected):
+            self.stage([self.row(source_cases=sources, suggested_bug_id=target,
+                                 source_actual="原备注", review_notes=["核对变体"])], context)
+        before = self.pending()["rows"][0]
+        first = self.apply(review_scope="bugs")
+        remaining = first["pending"]["rows"][0]
+        for key in ("row_id", "source_cases", "source_actual", "review_notes", "steps", "actual"):
+            self.assertEqual(remaining[key], before[key])
+        second_target = first["pending"]["bugs"][0]["id"]
+        self.apply(first["pending"], [{"row_id": remaining["row_id"], "bug_id": second_target, "mode": "fill"}])
+        self.assertEqual(len(self.app.workbench.get_bug(second_target)["case_sources"]), 2)
+
+    def test_ui_cannot_inject_original_sources_into_apply(self):
+        context = self.context()
+        target = context["bugs"][0]["id"]
+        self.stage([self.row(source_cases=[self.source_case(), self.source_case(case_id="SECOND-ID")],
+                             suggested_bug_id=target)], context)
+        pending = self.pending()
+        before = self.app.workbench.state()
+        assignment = {"row_id": pending["rows"][0]["row_id"], "bug_id": target,
+                      "source_cases": [self.source_case(case_id="FORGED")]}
+        with self.assertRaisesRegex(ValueError, "不能修改"):
+            self.apply(pending, [assignment])
+        self.assertEqual(self.app.workbench.state(), before)
+        self.assertEqual(self.pending(), pending)
 
     def test_apply_uses_server_facts_preserves_title_and_requires_new_review(self):
         self.stage()

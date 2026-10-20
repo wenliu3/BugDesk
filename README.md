@@ -6,17 +6,17 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 
 **Python 3.11+ · 标准库运行 · 无前端构建 · 浅色 / 深色模式 · MIT**
 
-## 下载 1.0.0
+## 下载 1.1.0
 
-软件与 WorkBuddy 技能从 **1.0.0** 开始作为首个正式版本发布。
+软件与 WorkBuddy 技能配套发布为 **1.1.0**，本次新增多用例归并、目录重新关联、覆盖对比和导入撤销。
 
 前往 [GitHub Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载：
 
 | 文件 | 用途 |
 | --- | --- |
-| `BugDesk-Windows-1.0.0.zip` | 推荐。解压后双击 `BugDesk.exe`，草稿保存在旁边的 `BugDesk-data`。无需安装 Python。 |
-| `BugDesk-1.0.0-Windows-x64.exe` | 单独的 Windows 64 位程序，双击运行；默认在 Windows 本地应用数据目录保存草稿。 |
-| `BugDesk-WorkBuddy-Skill-1.0.0.zip` | 可选，导入 WorkBuddy 的配套技能包；不需要解压后再压缩。 |
+| `BugDesk-Windows-1.1.0.zip` | 推荐。解压后双击 `BugDesk.exe`，草稿保存在旁边的 `BugDesk-data`。无需安装 Python。 |
+| `BugDesk-1.1.0-Windows-x64.exe` | 单独的 Windows 64 位程序，双击运行；默认在 Windows 本地应用数据目录保存草稿。 |
+| `BugDesk-WorkBuddy-Skill-1.1.0.zip` | 可选，导入 WorkBuddy 的配套技能包；不需要解压后再压缩。 |
 | `SHA256SUMS.txt` | 下载文件的 SHA-256 校验值。 |
 
 ## 界面预览
@@ -49,9 +49,11 @@ BugDesk 是面向 Windows 测试人员的本地工作台：每个子文件夹对
 - **整理测试事实**：编辑四项描述，自动保存；支持图片、视频预览和附件排除。
 - **复用公共配置**：产品、版本、指派人、反馈者等整批复用；个别 Bug 可在「本条设置」中单独覆盖。
 - **粘贴用例**：读取 HTML 表格、TSV 和多行单元格，核对字段与关联后填入草稿。
-- **可选 WorkBuddy 整理**：配套技能整理失败用例，提出关联建议；人工核对后导入，不自动审核或提交。
+- **可选 WorkBuddy 整理**：结合原始备注、Bug 文件夹标题和用例事实，自行将同一 Bug 的多条失败用例整理为一份报告，保留全部来源；人工核对后导入，不自动审核或提交。
 - **审核与提交**：查看完整报告，审核后连接禅道提交；首次实际提交限制为一条。
 - **导出与迁移**：导出 Markdown、CSV 或 JSON 备份，支持重新导入。
+- **改名后沿用草稿**：扫描前核对新旧文件夹对应关系，保留原描述、来源和禅道编号；整个日期目录搬迁后也可以重新关联。
+- **核对覆盖与撤销**：WorkBuddy 导入前查看逐字段差异，覆盖时确认完整变化；可撤销最近一次导入，恢复前的内容并重新审核。
 
 ## 快速开始
 
@@ -98,9 +100,15 @@ Bug 附件/
 
 ## 可选：接入 WorkBuddy
 
-从 [Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载 `BugDesk-WorkBuddy-Skill-1.0.0.zip`，按 WorkBuddy 客户端的技能导入流程安装。技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)，`SKILL.md`、`scripts` 和 `references` 位于技能 ZIP 根目录。
+从 [Releases](https://github.com/wenliu3/BugDesk/releases/latest) 下载 `BugDesk-WorkBuddy-Skill-1.1.0.zip`，按 WorkBuddy 客户端的技能导入流程安装。技能源码位于 [integrations/bugdesk-workbuddy](integrations/bugdesk-workbuddy)，`SKILL.md`、`scripts` 和 `references` 位于技能 ZIP 根目录。
 
-在 BugDesk 扫描 Bug 后，开启「WorkBuddy 整理」中的本机连接，复制当次任务并附上失败用例。等建议回传后，逐条核对来源用例和四项事实，再导入草稿。
+在 BugDesk 扫描 Bug 后，开启「WorkBuddy 整理」中的本机连接，复制当次任务并附上失败用例。WorkBuddy 会依据相同或语义相关的原备注，结合 Bug 文件夹标题和各用例事实判断归属；备注无需与标题逐字一致。同一 Bug 的多条用例由 WorkBuddy 组合成一份完整报告：仅输入不同、流程和结果相同的，用公共步骤加完整 query / 参数清单，共同结果只写一次；条件、流程或结果有差异时再分组，例外单列。全部输入原句与来源保留供核对。每个已匹配 Bug 最多回传一份建议，归属不明时保持待核对，不新建 Bug。
+
+等建议回传后，逐条核对四项报告、关联依据和所有来源，再导入草稿，无需自己多选组合。仅有相同管理标签、泛化“失败”或相似标题不能确定同一问题；缺失和冲突保留在待确认事项中。导入后保留全部关联用例元数据，便于回归查找。使用多用例功能时，请将程序与技能同步更新至 1.1.0 或更高版本；旧的单用例建议仍兼容。
+
+「导入前后对比」按当前补空白或覆盖模式显示实际变化；已有内容被覆盖时会先汇总展示全部选中 Bug 的变化。导入后可在 WorkBuddy 窗口使用「撤销上次导入」，关闭连接或重启程序后仍可恢复最近一次导入前的四项描述和来源。之后若又编辑了目标 Bug、改了公共设置或附件，或尝试过提交，撤销会被阻止，以保留后续工作；恢复后需要重新审核。
+
+如果改过 Bug 子文件夹名，或移动了整个日期目录，选择新位置扫描时可以在「关联原来的 Bug」中显式选择旧记录。默认作为新 Bug；也可选定旧日期目录后点击同名匹配，再核对确认。关联保留编辑后的标题与提交记录，并重新读取新位置附件，不移动或改写原始证据。一次最多关联 300 条且来自同一旧批次；预览有数量上限，超出部分会明确提示。
 
 连接最长有效 60 分钟；技能只能读取受限上下文并暂存建议。是否把测试资料发送给 AI 服务，由你和所使用的客户端决定。使用前请确认资料允许发送到相应服务。
 
@@ -126,6 +134,7 @@ Bug 附件/
 ```powershell
 python -m unittest discover -s tests -v
 node tests/test_web_behavior.js
+node tests/test_relink_web.js
 ```
 
 Python 测试使用本地文件和模拟服务，不连接真实公司系统。前端检查需要 Node.js，运行程序本身不需要 Node.js。
@@ -136,7 +145,7 @@ Python 测试使用本地文件和模拟服务，不连接真实公司系统。�
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python build_windows.py --release 1.0.0
+python build_windows.py --release 1.1.0
 ```
 
 产物生成在 `release` 目录，包含便携版 ZIP、单独的 EXE、配套技能 ZIP 和校验值。脚本会核对软件与技能版本，并只收集明确列出的交付文件。生成的 EXE、用户数据和发布压缩包不纳入源码提交。

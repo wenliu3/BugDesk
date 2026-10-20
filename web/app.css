@@ -299,6 +299,25 @@ body:has(dialog[open]){overflow:hidden}
 .workbuddy-evidence{margin-top:20px;padding-top:12px;border-top:1px solid #edf1ee;font-size:11px;color:#7d8b82}
 .workbuddy-evidence>summary{cursor:pointer;width:fit-content;color:#7c8d82}
 .workbuddy-evidence p{line-height:1.9}
+.workbuddy-source-case{margin-top:14px;padding-top:12px;border-top:1px solid #edf1ee}
+.workbuddy-source-case h5{font-size:12px;line-height:1.8;margin:0 0 6px;overflow-wrap:anywhere;color:inherit}
+.workbuddy-source-case .workbuddy-hover-facts{padding:0}
+.workbuddy-change{margin:12px 0;padding:10px 12px;border:1px solid #e3eae5;border-radius:6px}
+.workbuddy-change h4{margin:0 0 8px;font-size:12px;color:#48654e}
+.workbuddy-change-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.workbuddy-change-columns>div{min-width:0}
+.workbuddy-change-columns strong{font-size:11px;color:#7d8b82}
+.workbuddy-change-columns pre{font:inherit;font-size:12px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0 0;padding:8px;border-radius:4px;background:#f8f3ef}
+.workbuddy-change-columns>div+div pre{background:#edf6ef}
+.workbuddy-change-columns del{background:#f5d8d2;text-decoration:none}
+.workbuddy-change-columns mark{background:#ccebd5;color:inherit}
+.workbuddy-change.retained .workbuddy-change-columns>div+div pre{background:#f6f6f3}
+.workbuddy-compare-modal{width:min(1000px,94vw);max-width:1000px}
+.workbuddy-compare-bug h3{font-size:15px;line-height:1.7;overflow-wrap:anywhere}
+@media(max-width:700px){.workbuddy-change-columns{grid-template-columns:1fr}.workbuddy-footer{flex-wrap:wrap}}
+.case-source-list{padding-left:20px;font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.case-source-list li+li{margin-top:10px}
+.case-source-list .field-help{margin:2px 0 0}
 .workbuddy-source-actual{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.9;padding:12px;background:#f6f8f6;border-radius:6px;color:#6c7d72}
 .workbuddy-existing-hint{font-size:11px;color:#93a096;line-height:1.8;margin:14px 0 0}
 .workbuddy-review-modal .workbuddy-detail-check{flex-shrink:0;margin:0;border-width:1px 0 0;border-color:#e1e9e3;border-radius:0;background:#f6faf7;padding:13px 24px;color:#4a6a57;font-size:13px}
@@ -759,6 +778,15 @@ body:has(dialog[open]){overflow:hidden}
 :root[data-theme=dark] .workbuddy-review-modal :is(.workbuddy-detail-check,.workbuddy-hover-heading){background:#192e37;color:#abcabd}
 :root[data-theme=dark] :is(.workbuddy-hover-heading h4,.workbuddy-source h3,.workbuddy-source h4){color:#c1dbd2}
 :root[data-theme=dark] .workbuddy-source-actual{background:var(--night-input);color:#b4c9c1}
+:root[data-theme=dark] .workbuddy-source-case{border-color:var(--night-line)}
+:root[data-theme=dark] .workbuddy-change{border-color:var(--night-line)}
+:root[data-theme=dark] .workbuddy-change h4{color:var(--night-text)}
+:root[data-theme=dark] .workbuddy-change-columns strong{color:var(--night-muted)}
+:root[data-theme=dark] .workbuddy-change-columns pre{background:#3a302e;color:var(--night-text)}
+:root[data-theme=dark] .workbuddy-change-columns>div+div pre{background:#203c34}
+:root[data-theme=dark] .workbuddy-change-columns del{background:#643c36}
+:root[data-theme=dark] .workbuddy-change-columns mark{background:#346548;color:inherit}
+:root[data-theme=dark] .workbuddy-change.retained .workbuddy-change-columns>div+div pre{background:var(--night-input)}
 :root[data-theme=dark] .workbuddy-review-modal :is(.workbuddy-case-title,.workbuddy-summary strong,.workbuddy-detail-heading h3,.workbuddy-source-empty h4,.workbuddy-hover-title){color:#c1dbd2}
 :root[data-theme=dark] :is(.workbuddy-status,.workbuddy-status strong,.workbuddy-pane-heading,.workbuddy-position,.workbuddy-bug-tags,.workbuddy-selected-case .workbuddy-source-label,.workbuddy-picker-heading,.workbuddy-summary,.workbuddy-unchecked-filter,.workbuddy-list-caption,.workbuddy-case-association,.workbuddy-case-identity,.workbuddy-footer-policy,.workbuddy-footer .footer-hint,.workbuddy-waiting,.workbuddy-waiting p,.workbuddy-source-empty){color:var(--night-muted)}
 :root[data-theme=dark] .workbuddy-status.enabled strong{color:var(--night-accent)}
